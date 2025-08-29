@@ -24,3 +24,28 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Custom styles for resizable table columns */
+.resize-handle {
+  transition: background-color 0.2s ease;
+}
+
+.resize-handle:hover {
+  background-color: rgba(59, 130, 246, 0.5) !important;
+}
+
+/* Auto-fit column widths for pivot table */
+table.pivot-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+table.pivot-table th,
+table.pivot-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0.5rem;
+  min-width: 60px;
+  /* widths will be set dynamically by autoFitColumns */
+}

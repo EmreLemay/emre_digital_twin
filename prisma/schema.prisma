@@ -1,0 +1,193 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Model to track uploaded Excel files
+model ExcelFile {
+  id          Int      @id @default(autoincrement())
+  fileName    String
+  originalName String
+  fileSize    Int      // Size in bytes
+  mimeType    String
+  uploadedAt  DateTime @default(now())
+  processedAt DateTime?
+  status      FileProcessingStatus @default(PENDING)
+  errorMessage String?
+  
+  // Relations
+  worksheets  Worksheet[]
+  excelData   ExcelData[]
+  
+  @@map("excel_files")
+}
+
+// Model to represent worksheets within an Excel file
+model Worksheet {
+  id          Int      @id @default(autoincrement())
+  excelFileId Int
+  sheetName   String
+  sheetIndex  Int      // 0-based index of the sheet
+  rowCount    Int      @default(0)
+  columnCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  excelFile   ExcelFile @relation(fields: [excelFileId], references: [id], onDelete: Cascade)
+  rows        ExcelRow[]
+  
+  @@map("worksheets")
+}
+
+// Model to store row data from Excel
+model ExcelRow {
+  id          Int      @id @default(autoincrement())
+  worksheetId Int
+  rowIndex    Int      // 0-based row index
+  data        String   // JSON string of the row data
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  worksheet   Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  
+  @@map("excel_rows")
+}
+
+// Model for storing key-value pairs from Excel data (useful for flexible schemas)
+model ExcelData {
+  id          Int      @id @default(autoincrement())
+  fileId      Int
+  sheetName   String
+  rowIndex    Int
+  columnName  String
+  columnIndex Int
+  value       String?  // All values stored as strings
+  dataType    ExcelDataType @default(TEXT)
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  excelFile   ExcelFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  
+  @@map("excel_data")
+  @@index([fileId, sheetName])
+  @@index([fileId, rowIndex])
+}
+
+// Enums
+enum FileProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ExcelDataType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  FORMULA
+}
+
+// Model for Revit assets (linked to 3D models and metadata)
+model Asset {
+  id          Int      @id @default(autoincrement())
+  guid        String   @unique // Revit Element ID or UniqueId
+  name        String?
+  category    String?
+  filePath    String?  // Path to associated 3D model file
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  metadata    AssetMetadata[]
+  
+  @@map("assets")
+}
+
+// Model for asset parameters and metadata
+model AssetMetadata {
+  id              Int      @id @default(autoincrement())
+  assetId         Int
+  parameterName   String
+  parameterValue  String
+  parameterType   ParameterType @default(TEXT)
+  createdAt       DateTime @default(now())
+  
+  // Relations
+  asset           Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  
+  @@map("asset_metadata")
+  @@index([assetId])
+  @@index([parameterName])
+}
+
+// Parameter types for Revit data
+enum ParameterType {
+  TEXT
+  NUMBER
+  LENGTH
+  ANGLE
+  BOOLEAN
+  AREA
+  VOLUME
+  DATE
+}
+
+// Model for file-based assets (GLB files, panoramas, etc.)
+model FileAsset {
+  id          Int      @id @default(autoincrement())
+  filename    String   @unique // Original filename
+  filepath    String   @unique // Public path like /assets/glb/filename.glb
+  fileType    FileType
+  size        Int      // Size in bytes
+  description String?  // User description
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  tags        FileAssetTag[]
+  
+  @@map("file_assets")
+}
+
+// Model for tags that can be applied to file assets
+model Tag {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  color       String?  // Hex color code for display
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  fileAssets  FileAssetTag[]
+  
+  @@map("tags")
+}
+
+// Junction table for many-to-many relationship between FileAssets and Tags
+model FileAssetTag {
+  id          Int       @id @default(autoincrement())
+  fileAssetId Int
+  tagId       Int
+  createdAt   DateTime  @default(now())
+  
+  // Relations
+  fileAsset   FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  @@unique([fileAssetId, tagId])
+  @@map("file_asset_tags")
+}
+
+// Enum for file types
+enum FileType {
+  GLB
+  PANORAMA
+}
