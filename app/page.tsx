@@ -7,10 +7,11 @@ import ThreeViewer from './components/ThreeViewer'
 import PanoramaViewer from './components/PanoramaViewer'
 import ExcelUploader from './components/ExcelUploader'
 import RevitImporter from './components/RevitImporter'
+import BulkUploader from './components/BulkUploader'
 import AssetMetadataPanel from './components/AssetMetadataPanel'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'3d' | 'panorama' | 'excel' | 'revit'>('3d')
+  const [activeTab, setActiveTab] = useState<'3d' | 'panorama' | 'excel' | 'revit' | 'bulk'>('3d')
   const [modelUrl, setModelUrl] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [modelInfo, setModelInfo] = useState<{name: string, size: string, type: string, vertices?: number, animations?: number, scenes?: number} | null>(null)
@@ -130,7 +131,7 @@ export default function Home() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-4xl font-bold mb-2">
-              Revit Digital Twin Platform
+              Connex Next.js Digital Twin Platform v0.4
             </h1>
             <p className="text-gray-300">
               Managing 3D assets with GUIDs, metadata, and real-time streaming
@@ -144,10 +145,28 @@ export default function Home() {
               Asset Library →
             </Link>
             <Link 
+              href="/multi-viewer"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
+            >
+              Multi-GLB Viewer →
+            </Link>
+            <Link 
+              href="/hierarchy"
+              className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
+            >
+              Asset Hierarchy →
+            </Link>
+            <Link 
               href="/data"
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
             >
               Data Management →
+            </Link>
+            <Link 
+              href="/mother-viewer"
+              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
+            >
+              Mother GLB Viewer →
             </Link>
           </div>
         </div>
@@ -211,7 +230,7 @@ export default function Home() {
               </button>
               <button
                 onClick={() => setActiveTab('revit')}
-                className={`px-4 py-2 rounded-t transition-colors ${
+                className={`px-4 py-2 mr-2 rounded-t transition-colors ${
                   activeTab === 'revit' 
                     ? 'bg-green-600 text-white border-b-2 border-green-400' 
                     : 'text-gray-400 hover:text-white'
@@ -219,10 +238,20 @@ export default function Home() {
               >
                 Revit Import
               </button>
+              <button
+                onClick={() => setActiveTab('bulk')}
+                className={`px-4 py-2 rounded-t transition-colors ${
+                  activeTab === 'bulk' 
+                    ? 'bg-green-600 text-white border-b-2 border-green-400' 
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Bulk Upload
+              </button>
             </div>
             
             {/* Tab Content */}
-            <div className={`${activeTab === 'excel' || activeTab === 'revit' ? 'h-auto' : 'h-96'}`}>
+            <div className={`${activeTab === 'excel' || activeTab === 'revit' || activeTab === 'bulk' ? 'h-auto' : 'h-96'}`}>
               {activeTab === '3d' ? (
                 <ThreeViewer 
                   modelUrl={modelUrl} 
@@ -235,6 +264,8 @@ export default function Home() {
                 />
               ) : activeTab === 'excel' ? (
                 <ExcelUploader />
+              ) : activeTab === 'bulk' ? (
+                <BulkUploader />
               ) : (
                 <RevitImporter />
               )}
@@ -262,6 +293,8 @@ export default function Home() {
                     <span className="ml-2">
                       {activeTab === 'excel' 
                         ? 'Excel Data Management'
+                        : activeTab === 'bulk'
+                        ? 'Bulk File Processing'
                         : 'Revit Asset Import'
                       }
                     </span>
@@ -271,6 +304,8 @@ export default function Home() {
                     <span className="ml-2">
                       {activeTab === 'excel' 
                         ? 'Database Storage'
+                        : activeTab === 'bulk'
+                        ? 'Batch Processing'
                         : 'SQLite Database'
                       }
                     </span>
@@ -280,6 +315,8 @@ export default function Home() {
                     <span className="ml-2">
                       {activeTab === 'excel' 
                         ? 'Excel Spreadsheets'
+                        : activeTab === 'bulk'
+                        ? 'GLB & Panorama Files'
                         : 'Revit Schedules'
                       }
                     </span>
@@ -302,6 +339,15 @@ export default function Home() {
                       <li>• Each worksheet is stored with full row/column data</li>
                       <li>• API endpoints available for data querying</li>
                     </ul>
+                  ) : activeTab === 'bulk' ? (
+                    <ul className="text-xs text-gray-400 space-y-1">
+                      <li>• Drop GLB files in public/bulk-upload/glb/ folder</li>
+                      <li>• Drop panorama images in public/bulk-upload/panoramas/ folder</li>
+                      <li>• Files must start with valid GUID (8-4-4-4-12-8 hex format)</li>
+                      <li>• Click "Scan & Process" to move files and create database entries</li>
+                      <li>• Existing GUIDs will be updated/overridden with new files</li>
+                      <li>• View detailed processing results and error messages</li>
+                    </ul>
                   ) : (
                     <ul className="text-xs text-gray-400 space-y-1">
                       <li>• Upload Revit schedule files (.xlsx, .xls, .csv)</li>
@@ -317,6 +363,11 @@ export default function Home() {
             )}
           </div>
         </div>
+      </div>
+      
+      {/* Footer */}
+      <div className="fixed bottom-4 right-4">
+        <p className="text-xs text-gray-500">designed by Emre</p>
       </div>
     </main>
   )

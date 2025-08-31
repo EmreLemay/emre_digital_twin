@@ -12,12 +12,14 @@ interface ModelInfo {
 interface ThreeViewerProps {
   modelUrl?: string | null
   onModelLoad?: (info: ModelInfo) => void
+  autoFit?: boolean // Whether to automatically fit to view when model loads
+  unlit?: boolean // Whether to use unlit materials (no lighting effects)
 }
 
 // Export the zoom function so parent can call it
 let zoomToFitFunction: (() => void) | null = null
 
-export default function ThreeViewer({ modelUrl, onModelLoad }: ThreeViewerProps) {
+export default function ThreeViewer({ modelUrl, onModelLoad, autoFit = true, unlit = false }: ThreeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
@@ -84,21 +86,24 @@ export default function ThreeViewer({ modelUrl, onModelLoad }: ThreeViewerProps)
     // 3. Renderer setup
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setSize(width, height)
-    renderer.shadowMap.enabled = true
+    // Only enable shadows if not in unlit mode
+    renderer.shadowMap.enabled = !unlit
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     rendererRef.current = renderer
     containerRef.current.appendChild(renderer.domElement)
     
     // 4. Create default cube (shown when no model is loaded)
     const geometry = new THREE.BoxGeometry(2, 2, 2)
-    const material = new THREE.MeshStandardMaterial({ 
-      color: 0x00ff88,
-      roughness: 0.5,
-      metalness: 0.5
-    })
+    const material = unlit 
+      ? new THREE.MeshBasicMaterial({ color: 0x00ff88 }) // Unlit material
+      : new THREE.MeshStandardMaterial({ 
+          color: 0x00ff88,
+          roughness: 0.5,
+          metalness: 0.5
+        })
     const cube = new THREE.Mesh(geometry, material)
-    cube.castShadow = true
-    cube.receiveShadow = true
+    cube.castShadow = !unlit
+    cube.receiveShadow = !unlit
     
     // Add cube only if no model URL provided
     if (!modelUrl) {
@@ -110,20 +115,28 @@ export default function ThreeViewer({ modelUrl, onModelLoad }: ThreeViewerProps)
     const gridHelper = new THREE.GridHelper(10, 10, 0x444444, 0x222222)
     scene.add(gridHelper)
     
-    // 6. Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
-    scene.add(ambientLight)
-    
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
-    directionalLight.position.set(5, 10, 5)
-    directionalLight.castShadow = true
-    directionalLight.shadow.camera.near = 0.1
-    directionalLight.shadow.camera.far = 50
-    directionalLight.shadow.camera.left = -10
-    directionalLight.shadow.camera.right = 10
-    directionalLight.shadow.camera.top = 10
-    directionalLight.shadow.camera.bottom = -10
-    scene.add(directionalLight)
+    // 6. Lighting (conditional based on unlit prop)
+    if (unlit) {
+      // For unlit mode, use moderate ambient light
+      // MeshBasicMaterial doesn't need lighting, but we keep some for other elements
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.3)
+      scene.add(ambientLight)
+    } else {
+      // Normal lighting setup
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+      scene.add(ambientLight)
+      
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+      directionalLight.position.set(5, 10, 5)
+      directionalLight.castShadow = true
+      directionalLight.shadow.camera.near = 0.1
+      directionalLight.shadow.camera.far = 50
+      directionalLight.shadow.camera.left = -10
+      directionalLight.shadow.camera.right = 10
+      directionalLight.shadow.camera.top = 10
+      directionalLight.shadow.camera.bottom = -10
+      scene.add(directionalLight)
+    }
     
     // 7. Load GLB model if URL provided
     if (modelUrl) {
@@ -157,11 +170,34 @@ export default function ThreeViewer({ modelUrl, onModelLoad }: ThreeViewerProps)
             const scale = 4 / maxDim
             model.scale.multiplyScalar(scale)
             
-            // Enable shadows for all meshes in the model
+            // Configure shadows and materials for all meshes in the model
             model.traverse((child) => {
               if (child instanceof THREE.Mesh) {
-                child.castShadow = true
-                child.receiveShadow = true
+                if (unlit) {
+                  // In unlit mode, disable shadows and convert to unlit materials
+                  child.castShadow = false
+                  child.receiveShadow = false
+                  
+                  // Convert material to MeshBasicMaterial for true unlit rendering
+                  if (child.material) {
+                    const originalMaterial = child.material as any
+                    
+                    // Create unlit material preserving original properties
+                    child.material = new THREE.MeshBasicMaterial({
+                      color: originalMaterial.color || 0xffffff,
+                      map: originalMaterial.map || null,
+                      transparent: originalMaterial.transparent || false,
+                      opacity: originalMaterial.opacity !== undefined ? originalMaterial.opacity : 1.0,
+                      side: originalMaterial.side || THREE.FrontSide,
+                      alphaTest: originalMaterial.alphaTest || 0,
+                      vertexColors: originalMaterial.vertexColors || false
+                    })
+                  }
+                } else {
+                  // Normal lighting mode
+                  child.castShadow = true
+                  child.receiveShadow = true
+                }
               }
             })
             
@@ -178,10 +214,13 @@ export default function ThreeViewer({ modelUrl, onModelLoad }: ThreeViewerProps)
               })
             }
             
-            // Adjust camera to fit model
-            const distance = maxDim * 2
-            camera.position.set(distance, distance * 0.6, distance)
-            camera.lookAt(0, 0, 0)
+            // Auto-fit the camera to the model if autoFit is enabled
+            if (autoFit) {
+              // Small delay to ensure model is fully added to scene
+              setTimeout(() => {
+                zoomToFit()
+              }, 100)
+            }
           },
           (progress) => {
             // Progress callback
@@ -225,6 +264,8 @@ export default function ThreeViewer({ modelUrl, onModelLoad }: ThreeViewerProps)
       const box = new THREE.Box3()
       
       if (modelRef.current) {
+        // Update the world matrix to ensure accurate bounding box
+        modelRef.current.updateMatrixWorld(true)
         box.setFromObject(modelRef.current)
       } else {
         // Fallback to default cube if no model loaded
@@ -235,15 +276,18 @@ export default function ThreeViewer({ modelUrl, onModelLoad }: ThreeViewerProps)
       const size = box.getSize(new THREE.Vector3())
       const maxDim = Math.max(size.x, size.y, size.z)
       
-      // Calculate proper distance based on camera field of view
-      const fov = camera.fov * (Math.PI / 180) // Convert to radians
-      const distance = (maxDim / 2) / Math.tan(fov / 2) * 1.5 // Add 1.5x padding
+      // Ensure we have a minimum dimension to avoid division by zero
+      const effectiveMaxDim = Math.max(maxDim, 0.1)
       
-      // Position camera at an angle for better view
+      // Calculate proper distance based on camera field of view with better padding
+      const fov = camera.fov * (Math.PI / 180) // Convert to radians
+      const distance = (effectiveMaxDim / 2) / Math.tan(fov / 2) * 2.2 // Increased padding for better framing
+      
+      // Position camera at an optimal angle for better view
       const offset = new THREE.Vector3(
-        distance * 0.7,  // X offset
-        distance * 0.5,  // Y offset (slightly above)
-        distance * 0.7   // Z offset
+        distance * 0.6,  // X offset (reduced for better centering)
+        distance * 0.4,  // Y offset (slightly above)
+        distance * 0.8   // Z offset (primary viewing distance)
       )
       
       console.log(`Zoom to fit: center(${center.x.toFixed(1)}, ${center.y.toFixed(1)}, ${center.z.toFixed(1)}), size: ${maxDim.toFixed(1)}, distance: ${distance.toFixed(1)}`)

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import ThreeViewer from '../components/ThreeViewer'
+import PanoramaViewer from '../components/PanoramaViewer'
 
 interface AssetFile {
   name: string
@@ -56,6 +58,9 @@ export default function AssetsPage() {
   const [editingDescriptions, setEditingDescriptions] = useState<{[key: string]: string}>({})
   const [editingTags, setEditingTags] = useState<{[key: string]: string[]}>({})
   const [newTags, setNewTags] = useState<{[key: string]: string}>({})
+  
+  // GLB Preview state
+  const [selectedAssetForPreview, setSelectedAssetForPreview] = useState<AssetFile | null>(null)
 
   useEffect(() => {
     fetchAssets()
@@ -175,6 +180,11 @@ export default function AssetsPage() {
     setSelectedAssets([])
   }
 
+  // GLB Preview functions
+  const selectAssetForPreview = (asset: AssetFile) => {
+    setSelectedAssetForPreview(asset)
+  }
+
   // Row expansion and metadata loading
   const toggleRow = async (assetPath: string) => {
     if (expandedRows.includes(assetPath)) {
@@ -203,13 +213,12 @@ export default function AssetsPage() {
         try {
           let guid = ''
           if (assetPath.includes('.glb')) {
-            // For GLB files: extract GUID from filename (remove .glb extension)
+            // For GLB files: use full filename as GUID (remove .glb extension)
             guid = assetPath.split('/').pop()?.replace('.glb', '') || ''
           } else if (assetPath.includes('.jpg')) {
-            // For panoramas: extract GUID from filename (first part before dash)
+            // For panoramas: extract GUID from [guid]_360.jpg format
             const filename = assetPath.split('/').pop() || ''
-            const match = filename.match(/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/)
-            guid = match ? match[1] : ''
+            guid = filename.replace('_360.jpg', '').toLowerCase()
           }
           
           if (guid) {
@@ -370,9 +379,9 @@ export default function AssetsPage() {
       if (assetPath.includes('.glb')) {
         guid = assetPath.split('/').pop()?.replace('.glb', '') || ''
       } else if (assetPath.includes('.jpg')) {
+        // For panoramas: extract GUID from [guid]_360.jpg format
         const filename = assetPath.split('/').pop() || ''
-        const match = filename.match(/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/)
-        guid = match ? match[1] : ''
+        guid = filename.replace('_360.jpg', '').toLowerCase()
       }
       
       const response = await fetch(`/api/assets/${encodeURIComponent(guid)}`, {
@@ -475,16 +484,28 @@ export default function AssetsPage() {
           </div>
           <div className="flex gap-3">
             <Link 
-              href="/data"
-              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
+              href="/"
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
             >
-              Data Management →
+              ← Home
             </Link>
             <Link 
-              href="/"
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
+              href="/multi-viewer"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
             >
-              ← Back to Viewer
+              Multi-GLB Viewer
+            </Link>
+            <Link 
+              href="/hierarchy"
+              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+              Asset Hierarchy
+            </Link>
+            <Link 
+              href="/data"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+              Data Management
             </Link>
           </div>
         </div>
@@ -576,8 +597,12 @@ export default function AssetsPage() {
             <p>Upload some files from the main viewer to see them here.</p>
           </div>
         ) : (
-          /* Database-style List View */
-          <div className="bg-gray-800 rounded-lg overflow-hidden">
+          /* Split View Layout - Asset List (60%) + GLB Preview (40%) */
+          <div className="flex gap-6">
+            {/* Left Panel - Asset List (60%) */}
+            <div className="w-3/5">
+              {/* Database-style List View */}
+              <div className="bg-gray-800 rounded-lg overflow-hidden">
             {/* Table Header */}
             <div className="grid grid-cols-12 gap-4 p-4 bg-gray-700 border-b border-gray-600 text-sm font-medium text-gray-300">
               <div className="col-span-1 flex items-center">
@@ -607,21 +632,28 @@ export default function AssetsPage() {
               const isSelected = selectedAssets.includes(asset.publicPath)
               const isDeleting = deleting.includes(asset.publicPath)
               const isExpanded = expandedRows.includes(asset.publicPath)
+              const isSelectedForPreview = selectedAssetForPreview?.publicPath === asset.publicPath
               const metadata = assetMetadata[asset.publicPath]
               
               return (
                 <div key={index}>
                   {/* Main Row */}
-                  <div className={`grid grid-cols-12 gap-4 p-4 border-b border-gray-700 hover:bg-gray-750 transition-colors ${
-                    isSelected ? 'bg-green-900/20' : ''
-                  } ${isDeleting ? 'opacity-50' : ''}`}>
+                  <div 
+                    className={`grid grid-cols-12 gap-4 p-4 border-b border-gray-700 hover:bg-gray-750 transition-colors cursor-pointer ${
+                      isSelected ? 'bg-green-900/20' : ''
+                    } ${isSelectedForPreview ? 'bg-blue-900/30 border-blue-600' : ''} ${isDeleting ? 'opacity-50' : ''}`}
+                    onClick={() => selectAssetForPreview(asset)}
+                  >
                     
                     {/* Checkbox */}
                     <div className="col-span-1 flex items-center">
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() => toggleAssetSelection(asset.publicPath)}
+                        onChange={(e) => {
+                          e.stopPropagation()
+                          toggleAssetSelection(asset.publicPath)
+                        }}
                         disabled={isDeleting}
                         className="w-4 h-4 text-green-600 bg-gray-600 border-gray-500 rounded focus:ring-green-500"
                       />
@@ -661,7 +693,10 @@ export default function AssetsPage() {
                         <span 
                           className="font-medium text-white truncate cursor-pointer hover:text-green-400 transition-colors" 
                           title={`${asset.name} (click to rename)`}
-                          onClick={() => startNameEdit(asset.publicPath, asset.name)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            startNameEdit(asset.publicPath, asset.name)
+                          }}
                         >
                           {asset.name}
                         </span>
@@ -700,14 +735,20 @@ export default function AssetsPage() {
                         ▶
                       </Link>
                       <button
-                        onClick={() => toggleRow(asset.publicPath)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleRow(asset.publicPath)
+                        }}
                         className="bg-blue-600 hover:bg-blue-700 text-white p-1 rounded text-xs transition-colors"
                         title="Toggle metadata"
                       >
                         {isExpanded ? '▲' : '▼'}
                       </button>
                       <button
-                        onClick={() => handleDeleteSingle(asset.publicPath)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteSingle(asset.publicPath)
+                        }}
                         disabled={isDeleting}
                         className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 text-white p-1 rounded text-xs transition-colors"
                         title="Delete"
@@ -896,8 +937,98 @@ export default function AssetsPage() {
                 </div>
               )
             })}
+              </div>
+            </div>
+
+            {/* Right Panel - GLB Preview (40%) */}
+            <div className="w-2/5">
+              <div className="bg-gray-800 rounded-lg p-6 sticky top-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold">Asset Preview</h3>
+                  <span className="text-xs text-gray-400">Click any asset row to preview</span>
+                </div>
+                
+                {selectedAssetForPreview ? (
+                  selectedAssetForPreview.type === 'glb' ? (
+                    <div className="space-y-4">
+                      {/* Asset Info */}
+                      <div className="bg-gray-700 p-3 rounded">
+                        <h4 className="font-medium text-white mb-2">{selectedAssetForPreview.name}</h4>
+                        <div className="text-sm text-gray-400 space-y-1">
+                          <div>Size: {formatFileSize(selectedAssetForPreview.size)}</div>
+                          <div>Modified: {formatDate(selectedAssetForPreview.lastModified)}</div>
+                        </div>
+                      </div>
+                      
+                      {/* 3D Viewer */}
+                      <div className="bg-gray-900 rounded-lg overflow-hidden" style={{ height: '400px' }}>
+                        <ThreeViewer 
+                          key={selectedAssetForPreview.publicPath} // Force re-mount when URL changes
+                          modelUrl={selectedAssetForPreview.publicPath}
+                          autoFit={true}
+                          unlit={true}
+                          onModelLoad={(info) => {
+                            console.log('Model loaded:', info)
+                          }}
+                        />
+                      </div>
+                      
+                      {/* Model Info */}
+                      <div className="text-sm text-gray-400">
+                        <div>Click and drag to rotate • Scroll to zoom • Right-click and drag to pan</div>
+                      </div>
+                    </div>
+                  ) : selectedAssetForPreview.type === 'panorama' ? (
+                    <div className="space-y-4">
+                      {/* Asset Info */}
+                      <div className="bg-gray-700 p-3 rounded">
+                        <h4 className="font-medium text-white mb-2">{selectedAssetForPreview.name}</h4>
+                        <div className="text-sm text-gray-400 space-y-1">
+                          <div>Size: {formatFileSize(selectedAssetForPreview.size)}</div>
+                          <div>Modified: {formatDate(selectedAssetForPreview.lastModified)}</div>
+                          <div className="text-blue-400">360° Panoramic Image</div>
+                        </div>
+                      </div>
+                      
+                      {/* Panorama Viewer */}
+                      <div className="bg-black rounded-lg overflow-hidden" style={{ height: '400px' }}>
+                        <PanoramaViewer 
+                          key={selectedAssetForPreview.publicPath} // Force re-mount when URL changes
+                          imageUrl={selectedAssetForPreview.publicPath}
+                          onImageLoad={(info) => {
+                            console.log('Panorama loaded:', info)
+                          }}
+                        />
+                      </div>
+                      
+                      {/* Panorama Info */}
+                      <div className="text-sm text-gray-400">
+                        <div>Click and drag to look around • Scroll to zoom • Full 360° view</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-gray-400">
+                      <div className="text-4xl mb-4">📄</div>
+                      <p>Preview not available for this file type.</p>
+                      <p className="text-sm mt-2">Select a GLB or panorama file to preview.</p>
+                    </div>
+                  )
+                ) : (
+                  <div className="text-center py-12 text-gray-400">
+                    <div className="text-4xl mb-4">🎯</div>
+                    <p>Select an asset to preview</p>
+                    <p className="text-sm mt-2">Click on any GLB file for 3D preview or panorama file for 360° view.</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
+      </div>
+      
+      {/* Footer */}
+      <div className="fixed bottom-4 right-4">
+        <p className="text-xs text-gray-500">designed by Emre</p>
       </div>
     </main>
   )

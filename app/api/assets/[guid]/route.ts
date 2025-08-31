@@ -15,9 +15,12 @@ export async function GET(
       )
     }
 
-    // Extract GUID from filename if it's a GLB filename
-    // GLB files are named after their LCX_GUID
-    const cleanGuid = guid.replace('.glb', '').replace('.GLB', '')
+    // Extract GUID from filename (GLB or panorama)
+    // GLB files: "46ad14df-85fd-41dc-b1b4-0a7baf1b5412-003cf5ca.glb"
+    // Panorama files: "a0edc2ea-5ecb-4332-992e-6785ae78c6c8-003daafc_360.jpg"
+    const cleanGuid = guid
+      .replace(/\.(glb|GLB)$/, '')  // Remove .glb extension
+      .replace(/_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/, '')  // Remove _360.jpg suffix
 
     // Find asset by GUID including all metadata
     const asset = await prisma.asset.findUnique({
@@ -84,8 +87,10 @@ export async function PUT(
       )
     }
 
-    // Extract GUID from filename if it's a GLB filename
-    const cleanGuid = guid.replace('.glb', '').replace('.GLB', '')
+    // Extract GUID from filename (GLB or panorama)
+    const cleanGuid = guid
+      .replace(/\.(glb|GLB)$/, '')  // Remove .glb extension
+      .replace(/_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/, '')  // Remove _360.jpg suffix
 
     // Find the asset first
     const asset = await prisma.asset.findUnique({

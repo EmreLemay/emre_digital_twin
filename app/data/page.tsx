@@ -439,12 +439,32 @@ export default function DataManagementPage() {
               View and edit all asset metadata in one comprehensive table
             </p>
           </div>
-          <Link 
-            href="/"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
-          >
-            ← Back to Dashboard
-          </Link>
+          <div className="flex gap-3">
+            <Link 
+              href="/"
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+              ← Home
+            </Link>
+            <Link 
+              href="/assets"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+              Asset Library
+            </Link>
+            <Link 
+              href="/multi-viewer"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+              Multi-GLB Viewer
+            </Link>
+            <Link 
+              href="/hierarchy"
+              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+              Asset Hierarchy
+            </Link>
+          </div>
         </div>
 
         {/* Stats */}
@@ -643,6 +663,11 @@ export default function DataManagementPage() {
             <li>• Each row represents one unique asset with all parameters as columns</li>
           </ul>
         </div>
+      </div>
+      
+      {/* Footer */}
+      <div className="fixed bottom-4 right-4">
+        <p className="text-xs text-gray-500">designed by Emre</p>
       </div>
     </div>
   )

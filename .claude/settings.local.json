@@ -13,7 +13,8 @@
       "Bash(npm run dev:*)",
       "Bash(npx tsc:*)",
       "Bash(node:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": [],
     "ask": []

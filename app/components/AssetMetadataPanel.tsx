@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { ParameterType } from '@prisma/client'
+import PanoramaViewer from './PanoramaViewer'
 
 interface AssetMetadata {
   id: number
@@ -31,13 +32,30 @@ export default function AssetMetadataPanel({ glbFileName, isVisible }: AssetMeta
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedSections, setExpandedSections] = useState({
+    panorama: true,
     basic: true,
     metadata: true
   })
+  const [isPanoramaFile, setIsPanoramaFile] = useState(false)
+  const [panoramaUrl, setPanoramaUrl] = useState<string | null>(null)
 
   const extractGuidFromFileName = (fileName: string): string => {
-    // Remove file extension and extract GUID
-    return fileName.replace(/\.(glb|GLB)$/, '')
+    // Handle both GLB files (guid.glb) and panorama files (guid_360.jpg)
+    return fileName
+      .replace(/\.(glb|GLB)$/, '')  // Remove .glb extension
+      .replace(/_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/, '')  // Remove _360.jpg suffix
+  }
+
+  const isPanoramaFileName = (fileName: string): boolean => {
+    return /_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/.test(fileName)
+  }
+
+  const constructPanoramaUrl = (fileName: string): string => {
+    // Convert GLB-style filename to panorama URL
+    // Example: "a0edc2ea-5ecb-4332-992e-6785ae78c6c8-003daafc.glb" 
+    // becomes: "/assets/panoramas/a0edc2ea-5ecb-4332-992e-6785ae78c6c8-003daafc_360.jpg"
+    const guid = extractGuidFromFileName(fileName)
+    return `/assets/panoramas/${guid}_360.jpg`
   }
 
   useEffect(() => {
@@ -45,7 +63,22 @@ export default function AssetMetadataPanel({ glbFileName, isVisible }: AssetMeta
       if (!glbFileName) {
         setAsset(null)
         setError(null)
+        setIsPanoramaFile(false)
+        setPanoramaUrl(null)
         return
+      }
+
+      // Detect if this is a panorama file and set up panorama URL
+      const isPanorama = isPanoramaFileName(glbFileName)
+      setIsPanoramaFile(isPanorama)
+      
+      if (isPanorama) {
+        // For panorama files, use the filename directly as the URL
+        setPanoramaUrl(`/assets/panoramas/${glbFileName}`)
+      } else {
+        // For GLB files, try to find corresponding panorama
+        const panoramaUrl = constructPanoramaUrl(glbFileName)
+        setPanoramaUrl(panoramaUrl)
       }
 
       setLoading(true)
@@ -88,7 +121,7 @@ export default function AssetMetadataPanel({ glbFileName, isVisible }: AssetMeta
     fetchAssetData()
   }, [glbFileName])
 
-  const toggleSection = (section: 'basic' | 'metadata') => {
+  const toggleSection = (section: 'panorama' | 'basic' | 'metadata') => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
@@ -192,6 +225,43 @@ export default function AssetMetadataPanel({ glbFileName, isVisible }: AssetMeta
 
       {asset && !loading && !error && (
         <div className="space-y-4">
+          {/* Panorama Preview */}
+          {panoramaUrl && (
+            <div className="bg-gray-700 rounded-lg">
+              <button
+                onClick={() => toggleSection('panorama')}
+                className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                <h3 className="font-medium text-white">
+                  {isPanoramaFile ? 'Panorama View' : 'Associated Panorama'}
+                  {isPanoramaFile && <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">360°</span>}
+                </h3>
+                <span className={`transform transition-transform ${expandedSections.panorama ? 'rotate-180' : ''}`}>
+                  ▼
+                </span>
+              </button>
+              
+              {expandedSections.panorama && (
+                <div className="px-4 pb-4">
+                  <div className="bg-black rounded-lg overflow-hidden" style={{ height: '240px' }}>
+                    <PanoramaViewer 
+                      imageUrl={panoramaUrl}
+                      onImageLoad={(info) => {
+                        console.log('Panorama loaded:', info)
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    {isPanoramaFile 
+                      ? 'Interactive 360° panorama view - drag to look around, scroll to zoom'
+                      : 'Associated panorama image for this asset'
+                    }
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Basic Information */}
           <div className="bg-gray-700 rounded-lg">
             <button

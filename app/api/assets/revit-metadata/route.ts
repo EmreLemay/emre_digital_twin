@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// Extract GUID from GLB filename
+// Extract GUID from filename (GLB or panorama)
 function extractGuidFromFilename(filename: string): string | null {
-  // GLB files are named like: "46ad14df-85fd-41dc-b1b4-0a7baf1b5412-003cf5ca.glb"
-  // Extract the first GUID part before the last dash
-  const match = filename.match(/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/)
-  return match ? match[1] : null
+  // GLB files: "46ad14df-85fd-41dc-b1b4-0a7baf1b5412-003cf5ca.glb"
+  // Panorama files: "a0edc2ea-5ecb-4332-992e-6785ae78c6c8-003daafc_360.jpg"
+  return filename
+    .replace(/\.(glb|GLB)$/, '')  // Remove .glb extension
+    .replace(/_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/, '')  // Remove _360.jpg suffix
+    .toLowerCase()
 }
 
-// Get Revit metadata for a GLB file by extracting GUID from filename
+// Get Revit metadata for GLB or panorama files by extracting GUID from filename
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -24,10 +26,21 @@ export async function GET(request: NextRequest) {
 
     // Extract filename from filepath
     const filename = filepath.split('/').pop()
-    if (!filename || !filename.endsWith('.glb')) {
+    if (!filename) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Not a GLB file' 
+        error: 'Invalid file path' 
+      })
+    }
+    
+    // Support both GLB and panorama files
+    const isGLB = filename.endsWith('.glb') || filename.endsWith('.GLB')
+    const isPanorama = /_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/.test(filename)
+    
+    if (!isGLB && !isPanorama) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'File must be a GLB or panorama file (_360.jpg)' 
       })
     }
 

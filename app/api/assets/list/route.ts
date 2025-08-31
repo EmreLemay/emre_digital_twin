@@ -2,6 +2,23 @@ import { NextResponse } from 'next/server'
 import { readdir, stat } from 'fs/promises'
 import { join } from 'path'
 
+// Utility function to process items in batches with limited concurrency
+async function processBatch<T, R>(
+  items: T[],
+  processor: (item: T) => Promise<R>,
+  batchSize: number = 5
+): Promise<R[]> {
+  const results: R[] = []
+  
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize)
+    const batchResults = await Promise.all(batch.map(processor))
+    results.push(...batchResults)
+  }
+  
+  return results
+}
+
 interface AssetFile {
   name: string
   type: 'glb' | 'panorama'
