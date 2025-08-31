@@ -14,7 +14,10 @@
       "Bash(npx tsc:*)",
       "Bash(node:*)",
       "Bash(npm uninstall:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(git commit:*)",
+      "Bash(git lfs:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
