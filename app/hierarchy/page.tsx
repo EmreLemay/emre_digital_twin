@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import MenuBar from '../components/MenuBar'
 import MotherGLBViewer from '../components/MotherGLBViewer'
 
 interface AssetNode {
@@ -308,7 +309,9 @@ export default function HierarchyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <>
+      <MenuBar />
+      <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700 p-6">
         <div className="flex items-center justify-between">
@@ -320,37 +323,9 @@ export default function HierarchyPage() {
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Navigation Links */}
-            <div className="flex gap-3">
-              <Link 
-                href="/"
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-              >
-                ← Home
-              </Link>
-              <Link 
-                href="/assets"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-              >
-                Asset Library
-              </Link>
-              <Link 
-                href="/multi-viewer"
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-              >
-                Multi-GLB Viewer
-              </Link>
-              <Link 
-                href="/data"
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-              >
-                Data Management
-              </Link>
-            </div>
-            
-            {/* Hierarchy Stats */}
+          {/* Hierarchy Stats */}
             {hierarchyData && (
-              <div className="text-right border-l border-gray-600 pl-4">
+              <div className="text-right">
                 <div className="text-2xl font-bold text-green-400">
                   {hierarchyData.totalAssets}
                 </div>
@@ -505,6 +480,7 @@ export default function HierarchyPage() {
       <div className="fixed bottom-4 right-4">
         <p className="text-xs text-gray-500">designed by Emre</p>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

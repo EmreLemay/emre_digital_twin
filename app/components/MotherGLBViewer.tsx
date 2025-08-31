@@ -18,10 +18,26 @@ interface VolumeData {
 interface MotherGLBViewerProps {
   modelUrl: string | null
   onVolumeSelect: (volumeData: VolumeData | null, hierarchyInfo?: any) => void
+  onVolumeLoad?: (o_dd1_guids: string[]) => void
+  onAllVolumesLoad?: (all_guids: string[]) => void
   selectedGuids?: string[]
+  visibleGuids?: string[]
+  selectableGuids?: string[]
+  hierarchyLevel?: number
+  shouldZoomToVisible?: boolean
 }
 
-export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuids = [] }: MotherGLBViewerProps) {
+export default function MotherGLBViewer({ 
+  modelUrl, 
+  onVolumeSelect,
+  onVolumeLoad,
+  onAllVolumesLoad,
+  selectedGuids = [],
+  visibleGuids = [],
+  selectableGuids = [],
+  hierarchyLevel = 1,
+  shouldZoomToVisible = false
+}: MotherGLBViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
@@ -38,11 +54,71 @@ export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuid
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [volumeCount, setVolumeCount] = useState(0)
-  const [hierarchyLevel, setHierarchyLevel] = useState(0)
   const [breadcrumbs, setBreadcrumbs] = useState<VolumeData[]>([])
   const [visibleVolumes, setVisibleVolumes] = useState<Set<string>>(new Set())
 
-  // Zoom to extents function
+  // Zoom to visible volumes only (for drill-down functionality)
+  const zoomToVisibleVolumes = () => {
+    console.log('🎯 Zoom to visible volumes requested')
+    console.log('Visible GUIDs:', visibleGuids)
+    console.log('Camera available:', !!cameraRef.current)
+    console.log('Controls available:', !!controlsRef.current)
+    
+    if (visibleGuids.length === 0) {
+      console.log('❌ No visible volumes for zoom extents')
+      return
+    }
+    
+    if (!cameraRef.current || !controlsRef.current) {
+      console.log('❌ Camera or controls not available for zoom extents')
+      return
+    }
+
+    // Get visible volumes only
+    const visibleVolumes = volumesRef.current.filter(volume => 
+      visibleGuids.includes(volume.guid)
+    )
+
+    if (visibleVolumes.length === 0) {
+      console.log('❌ No matching visible volumes found')
+      return
+    }
+
+    console.log(`Found ${visibleVolumes.length} visible volumes`)
+
+    // Calculate bounding box for visible volumes only
+    const boundingBox = new THREE.Box3()
+    visibleVolumes.forEach(volume => {
+      boundingBox.expandByObject(volume.mesh)
+    })
+
+    const center = boundingBox.getCenter(new THREE.Vector3())
+    const size = boundingBox.getSize(new THREE.Vector3())
+    const maxDim = Math.max(size.x, size.y, size.z)
+    
+    // Calculate distance based on camera FOV
+    const fov = cameraRef.current.fov * (Math.PI / 180)
+    const distance = Math.abs(maxDim / Math.sin(fov / 2)) * 1.2
+
+    console.log(`Zooming to center: ${center.x}, ${center.y}, ${center.z}`)
+    console.log(`Distance: ${distance}`)
+
+    // Get current camera direction to maintain viewing angle
+    const currentDirection = new THREE.Vector3()
+    cameraRef.current.getWorldDirection(currentDirection)
+    currentDirection.negate()
+    
+    // Position camera along the same viewing direction
+    const newCameraPosition = center.clone().add(currentDirection.multiplyScalar(distance))
+    
+    cameraRef.current.position.copy(newCameraPosition)
+    controlsRef.current.target.copy(center)
+    controlsRef.current.update()
+
+    console.log('✅ Zoom to visible volumes completed')
+  }
+
+  // Original zoom to extents function (for all volumes)
   const zoomToExtents = () => {
     console.log('🎯 Zoom to extents requested')
     console.log('Volumes available:', volumesRef.current.length)
@@ -225,15 +301,18 @@ export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuid
           const volumeData = volumesRef.current.find(v => v.mesh === clickedObject)
           
           if (volumeData && volumeData.visible) {
-            // Check if this volume has children
-            if (volumeData.children.length > 0) {
-              console.log('🎯 Drilling down into parent:', volumeData.guid, 'with', volumeData.children.length, 'children')
-              await drillDownIntoParent(volumeData)
-            } else {
-              console.log('📄 Leaf volume selected:', volumeData.guid)
-              selectVolume(clickedObject)
-              onVolumeSelect(volumeData)
+            // Check if this volume is selectable (based on hierarchy level)
+            const isSelectable = clickedObject.userData.selectable !== false
+            
+            if (!isSelectable) {
+              console.log('❌ Volume not selectable at current hierarchy level:', volumeData.guid)
+              return
             }
+
+            // For drill-down mode, selection triggers navigation to next level
+            console.log('✅ Selectable volume clicked:', volumeData.guid)
+            selectVolume(clickedObject)
+            onVolumeSelect(volumeData)
             return
           } else if (clickedObject.userData.isVolume) {
             // Fallback: check userData
@@ -479,7 +558,6 @@ export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuid
     // Update visible volumes set
     const visibleGuids = new Set(rootVolumes.map(v => v.guid))
     setVisibleVolumes(visibleGuids)
-    setHierarchyLevel(0)
     setBreadcrumbs([])
     
     // Calculate max depth
@@ -641,6 +719,27 @@ export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuid
         // Send hierarchy info to parent component
         onVolumeSelect(null, hierarchyData.hierarchyInfo)
         
+        // Send all volume GUIDs to parent for comprehensive searching
+        if (onAllVolumesLoad) {
+          const allGuids = hierarchyData.allVolumes.map(v => v.guid)
+          onAllVolumesLoad(allGuids)
+          console.log(`📦 Sent ${allGuids.length} volume GUIDs to parent for O_DD analysis`)
+        }
+        
+        // Identify PURE O_DD1 level items and notify parent (async)
+        identifyO_DD1Items(hierarchyData.allVolumes).then(o_dd1_items => {
+          console.log('🎯 Identified PURE O_DD1 items:', o_dd1_items.length)
+          if (onVolumeLoad) {
+            onVolumeLoad(o_dd1_items)
+          }
+        }).catch(error => {
+          console.error('Error identifying O_DD1 items:', error)
+          // Fallback: if O_DD1 identification fails, show nothing (start clean)
+          if (onVolumeLoad) {
+            onVolumeLoad([])
+          }
+        })
+        
         // Add the loaded model to scene
         sceneRef.current!.add(gltf.scene)
         
@@ -667,6 +766,140 @@ export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuid
     )
   }, [modelUrl])
 
+  // Function to identify PURE O_DD1 items (O_DD1 filled, O_DD2/3/4 empty)
+  const identifyO_DD1Items = async (volumes: VolumeData[]): Promise<string[]> => {
+    console.log(`🔍 Checking ${volumes.length} volumes for PURE O_DD1 classification (O_DD1 filled, O_DD2/3/4 empty)...`)
+    
+    const pure_o_dd1_volumes: string[] = []
+    
+    // Check each volume for strict O_DD1 hierarchy
+    for (const volume of volumes) {
+      try {
+        // Fetch Revit metadata for this volume
+        const response = await fetch(`/api/assets/revit-metadata?filepath=${volume.guid}.glb`)
+        const result = await response.json()
+        
+        if (result.success && result.metadata) {
+          let hasO_DD1Value = false
+          let hasO_DD2Value = false
+          let hasO_DD3Value = false
+          let hasO_DD4Value = false
+          let o_dd1_value = null
+          
+          // Check all parameters to determine O_DD level
+          Object.entries(result.metadata).forEach(([key, value]: [string, any]) => {
+            const paramName = key.toLowerCase()
+            const paramValue = value?.value
+            
+            // Check if parameter has a non-empty value
+            const hasValue = paramValue && 
+              paramValue !== '' && 
+              paramValue !== 'null' && 
+              paramValue !== 'undefined' &&
+              String(paramValue).trim() !== ''
+            
+            if (!hasValue) return
+            
+            // Check for each O_DD level
+            if (paramName.includes('o_dd1') || paramName.includes('o dd1')) {
+              hasO_DD1Value = true
+              o_dd1_value = paramValue
+            } else if (paramName.includes('o_dd2') || paramName.includes('o dd2')) {
+              hasO_DD2Value = true
+            } else if (paramName.includes('o_dd3') || paramName.includes('o dd3')) {
+              hasO_DD3Value = true
+            } else if (paramName.includes('o_dd4') || paramName.includes('o dd4')) {
+              hasO_DD4Value = true
+            }
+          })
+          
+          // PURE O_DD1: Has O_DD1 value BUT no O_DD2/3/4 values
+          const isPureO_DD1 = hasO_DD1Value && !hasO_DD2Value && !hasO_DD3Value && !hasO_DD4Value
+          
+          if (isPureO_DD1) {
+            console.log(`✅ PURE O_DD1 found: ${volume.name || volume.guid} = "${o_dd1_value}"`)
+            pure_o_dd1_volumes.push(volume.guid)
+          } else if (hasO_DD1Value) {
+            const levels = []
+            if (hasO_DD2Value) levels.push('O_DD2')
+            if (hasO_DD3Value) levels.push('O_DD3')
+            if (hasO_DD4Value) levels.push('O_DD4')
+            console.log(`⏭️ NOT O_DD1 level: ${volume.name || volume.guid} also has [${levels.join(', ')}]`)
+          }
+        }
+      } catch (error) {
+        // Silently continue if metadata fetch fails
+        console.log(`⚠️ Could not fetch metadata for ${volume.guid}`)
+      }
+    }
+    
+    console.log(`📊 PURE O_DD1 Analysis: Found ${pure_o_dd1_volumes.length} pure O_DD1 volumes from ${volumes.length} total`)
+    
+    return pure_o_dd1_volumes
+  }
+
+  // Handle visibility and selectability filtering based on hierarchy level
+  useEffect(() => {
+    if (volumesRef.current.length === 0) return
+
+    console.log('🔍 Updating volume visibility/selectability')
+    console.log('Visible GUIDs:', visibleGuids)
+    console.log('Selectable GUIDs:', selectableGuids)
+
+    volumesRef.current.forEach(volume => {
+      // If no visibleGuids specified, default to showing nothing (start clean)
+      const isVisible = visibleGuids.length > 0 && visibleGuids.includes(volume.guid)
+      const isSelectable = selectableGuids.length > 0 && selectableGuids.includes(volume.guid)
+
+      // Update visibility
+      volume.mesh.visible = isVisible
+      volume.visible = isVisible
+
+      // Update selectability (store in userData)
+      volume.mesh.userData.selectable = isSelectable
+
+      if (isVisible) {
+        if (isSelectable) {
+          // Restore original material for selectable items
+          const originalMaterial = originalMaterialsRef.current.get(volume.mesh)
+          if (originalMaterial) {
+            volume.mesh.material = originalMaterial
+          }
+        } else {
+          // Apply dimmed material to visible but non-selectable items
+          if (!dimmedMaterialRef.current) {
+            dimmedMaterialRef.current = new THREE.MeshBasicMaterial({
+              color: 0x666666,
+              transparent: true,
+              opacity: 0.4
+            })
+          }
+          
+          // Store original material if not already stored
+          if (!originalMaterialsRef.current.has(volume.mesh)) {
+            originalMaterialsRef.current.set(volume.mesh, volume.mesh.material)
+          }
+          
+          volume.mesh.material = dimmedMaterialRef.current
+        }
+      }
+    })
+
+    console.log(`Updated visibility for ${volumesRef.current.length} volumes`)
+  }, [visibleGuids, selectableGuids])
+
+  // Trigger zoom to visible volumes when shouldZoomToVisible changes
+  useEffect(() => {
+    if (shouldZoomToVisible && visibleGuids.length > 0 && volumesRef.current.length > 0) {
+      // Add a small delay to ensure volumes are properly loaded and visible
+      const timeoutId = setTimeout(() => {
+        zoomToVisibleVolumes()
+      }, 500)
+      
+      return () => clearTimeout(timeoutId)
+    }
+  }, [shouldZoomToVisible, visibleGuids])
+
   // Drill down into parent volume (with blink animation)
   const drillDownIntoParent = async (parentVolume: VolumeData) => {
     try {
@@ -690,7 +923,6 @@ export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuid
       const newVisibleGuids = new Set(parentVolume.children.map(c => c.guid))
       setVisibleVolumes(newVisibleGuids)
       setBreadcrumbs(prev => [...prev, parentVolume])
-      setHierarchyLevel(prev => prev + 1)
       
       // Clear selection
       selectVolume(null)
@@ -765,7 +997,6 @@ export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuid
     // Update state
     const rootGuids = new Set(volumesRef.current.filter(v => v.level === 0).map(v => v.guid))
     setVisibleVolumes(rootGuids)
-    setHierarchyLevel(0)
     setBreadcrumbs([])
     
     // Clear selection and zoom
@@ -796,7 +1027,6 @@ export default function MotherGLBViewer({ modelUrl, onVolumeSelect, selectedGuid
     // Update state
     const childGuids = new Set(targetParent.children.map(c => c.guid))
     setVisibleVolumes(childGuids)
-    setHierarchyLevel(targetIndex + 1)
     setBreadcrumbs(breadcrumbs.slice(0, targetIndex + 1))
     
     // Clear selection and zoom

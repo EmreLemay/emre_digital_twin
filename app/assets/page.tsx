@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import MenuBar from '../components/MenuBar'
 import ThreeViewer from '../components/ThreeViewer'
 import PanoramaViewer from '../components/PanoramaViewer'
 
@@ -474,40 +475,14 @@ export default function AssetsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-900 text-white p-8">
+    <>
+      <MenuBar />
+      <main className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">Asset Database</h1>
-            <p className="text-gray-300">Manage your 3D models and panoramic images</p>
-          </div>
-          <div className="flex gap-3">
-            <Link 
-              href="/"
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              ← Home
-            </Link>
-            <Link 
-              href="/multi-viewer"
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Multi-GLB Viewer
-            </Link>
-            <Link 
-              href="/hierarchy"
-              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Asset Hierarchy
-            </Link>
-            <Link 
-              href="/data"
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Data Management
-            </Link>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold mb-2">Asset Database</h1>
+          <p className="text-gray-300">Manage your 3D models and panoramic images</p>
         </div>
 
         {/* Filter Tabs */}
@@ -1031,5 +1006,6 @@ export default function AssetsPage() {
         <p className="text-xs text-gray-500">designed by Emre</p>
       </div>
     </main>
+    </>
   )
 }

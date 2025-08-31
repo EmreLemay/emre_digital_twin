@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import MenuBar from '../components/MenuBar'
 import MotherGLBViewer from '../components/MotherGLBViewer'
 
 export default function MotherViewerPage() {
@@ -16,6 +17,12 @@ export default function MotherViewerPage() {
   const [fileLastModified, setFileLastModified] = useState<string>('')
   const [panelSplit, setPanelSplit] = useState(70) // Default 70% for 3D viewer, 30% for right panel
   const [isResizing, setIsResizing] = useState(false)
+  
+  // Drill-down hierarchy navigation state
+  const [currentHierarchyLevel, setCurrentHierarchyLevel] = useState(1) // Start at O_DD1
+  const [hierarchyBreadcrumbs, setHierarchyBreadcrumbs] = useState<Array<{guid: string, name: string, level: number}>>([])
+  const [visibleGuids, setVisibleGuids] = useState<Set<string>>(new Set())
+  const [selectableGuids, setSelectableGuids] = useState<Set<string>>(new Set())
 
   // Load panel split from localStorage and check for existing file
   useEffect(() => {
@@ -173,12 +180,219 @@ export default function MotherViewerPage() {
     setPanelSplit(70)
   }
 
+  // Initialize hierarchy levels when mother file loads
+  useEffect(() => {
+    if (motherFile) {
+      // Start with O_DD1 level (initialize as empty, will be populated by MotherGLBViewer)
+      setCurrentHierarchyLevel(1)
+      setHierarchyBreadcrumbs([])
+      setVisibleGuids(new Set()) // Empty initially, will be set when volumes load
+      setSelectableGuids(new Set()) // Empty initially, will be set when volumes load
+      console.log('🎯 Initialized hierarchy to O_DD1 level')
+    }
+  }, [motherFile])
+
+  const initializeHierarchyLevel = async () => {
+    try {
+      // Reset to O_DD1 level
+      setCurrentHierarchyLevel(1)
+      setHierarchyBreadcrumbs([])
+      // Note: visibleGuids and selectableGuids will be set by the MotherGLBViewer component
+      // when it identifies O_DD1 level items from the loaded model
+      console.log('🔄 Resetting to O_DD1 level')
+    } catch (error) {
+      console.error('Error initializing hierarchy level:', error)
+    }
+  }
+
+  // Helper function to find volumes at specific O_DD level with matching parent classification
+  const findVolumesAtO_DDLevel = async (targetLevel: number, parentO_DDValue?: string): Promise<string[]> => {
+    console.log(`🔍 Finding PURE O_DD${targetLevel} volumes (O_DD1-${targetLevel} filled, O_DD${targetLevel+1}-4 empty)`)
+    if (parentO_DDValue) {
+      console.log(`   Matching parent O_DD classification: "${parentO_DDValue}"`)
+    }
+    
+    const targetLevelVolumes: string[] = []
+    
+    // Use the cached all volume GUIDs for comprehensive search
+    const searchGuids = allVolumeGuids.size > 0 ? allVolumeGuids : new Set([
+      ...Array.from(visibleGuids),
+      ...Array.from(selectableGuids)
+    ])
+    
+    if (searchGuids.size === 0) {
+      console.log('No volume GUIDs available for O_DD level search')
+      return []
+    }
+    
+    for (const volumeGuid of searchGuids) {
+      try {
+        const response = await fetch(`/api/assets/revit-metadata?filepath=${volumeGuid}.glb`)
+        const result = await response.json()
+        
+        if (result.success && result.metadata) {
+          const o_ddLevels: { [key: number]: string | null } = {
+            1: null, 2: null, 3: null, 4: null
+          }
+          
+          // Check all O_DD parameters for this volume
+          Object.entries(result.metadata).forEach(([key, value]: [string, any]) => {
+            const paramName = key.toLowerCase()
+            const paramValue = value?.value
+            
+            const hasValue = paramValue && 
+              paramValue !== '' && 
+              paramValue !== 'null' && 
+              paramValue !== 'undefined' &&
+              String(paramValue).trim() !== ''
+            
+            if (!hasValue) return
+            
+            // Identify which O_DD level this parameter is
+            for (let level = 1; level <= 4; level++) {
+              if (paramName.includes(`o_dd${level}`) || paramName.includes(`o dd${level}`)) {
+                o_ddLevels[level] = paramValue
+                break
+              }
+            }
+          })
+          
+          // Check if this volume is PURE at the target level
+          const hasAllRequiredLevels = Array.from({length: targetLevel}, (_, i) => i + 1)
+            .every(level => o_ddLevels[level] !== null)
+          
+          const hasNoHigherLevels = Array.from({length: 4 - targetLevel}, (_, i) => targetLevel + 1 + i)
+            .every(level => o_ddLevels[level] === null)
+          
+          const isPureTargetLevel = hasAllRequiredLevels && hasNoHigherLevels
+          
+          // If looking for children of a parent, check if O_DD1 matches
+          const matchesParent = !parentO_DDValue || o_ddLevels[1] === parentO_DDValue
+          
+          if (isPureTargetLevel && matchesParent) {
+            console.log(`✅ PURE O_DD${targetLevel} found: ${volumeGuid}`)
+            console.log(`   O_DD values: ${Object.entries(o_ddLevels).filter(([_, v]) => v).map(([k, v]) => `O_DD${k}="${v}"`).join(', ')}`)
+            targetLevelVolumes.push(volumeGuid)
+          }
+        }
+      } catch (error) {
+        // Continue on error
+      }
+    }
+    
+    console.log(`📊 Found ${targetLevelVolumes.length} pure O_DD${targetLevel} volumes`)
+    return targetLevelVolumes
+  }
+
+  const drillDownToLevel = async (selectedVolume: any, targetLevel: number) => {
+    try {
+      console.log(`🎯 Drilling down from O_DD${currentHierarchyLevel} to O_DD${targetLevel}`)
+      console.log(`Selected volume:`, selectedVolume.name, selectedVolume.guid)
+      
+      // Get the selected volume's O_DD1 value to find related children
+      const selectedResponse = await fetch(`/api/assets/revit-metadata?filepath=${selectedVolume.guid}.glb`)
+      const selectedResult = await selectedResponse.json()
+      
+      let selectedO_DD1Value = null
+      if (selectedResult.success && selectedResult.metadata) {
+        // Find the O_DD1 parameter value for the selected volume
+        for (const [key, value] of Object.entries(selectedResult.metadata)) {
+          const paramName = key.toLowerCase()
+          if (paramName.includes('o_dd1') || paramName.includes('o dd1')) {
+            selectedO_DD1Value = value?.value
+            break
+          }
+        }
+      }
+      
+      console.log(`Selected volume O_DD1 value:`, selectedO_DD1Value)
+      
+      if (!selectedO_DD1Value) {
+        console.log(`Could not find O_DD1 value for selected volume`)
+        return
+      }
+      
+      // Find volumes at the target level that share the same O_DD1 classification
+      const childVolumes = await findVolumesAtO_DDLevel(targetLevel, selectedO_DD1Value)
+      
+      if (childVolumes.length > 0) {
+        // Update breadcrumbs
+        const newBreadcrumb = {
+          guid: selectedVolume.guid,
+          name: selectedVolume.name || 'Unknown',
+          level: currentHierarchyLevel
+        }
+        setHierarchyBreadcrumbs(prev => [...prev, newBreadcrumb])
+        
+        // Update visible and selectable items to child volumes
+        const childGuids = new Set(childVolumes)
+        setVisibleGuids(childGuids)
+        setSelectableGuids(childGuids)
+        setCurrentHierarchyLevel(targetLevel)
+        
+        console.log(`✅ Successfully drilled down to ${childVolumes.length} O_DD${targetLevel} volumes`)
+      } else {
+        console.log(`❌ No O_DD${targetLevel} volumes found under "${selectedO_DD1Value}"`)
+      }
+    } catch (error) {
+      console.error('Error drilling down hierarchy:', error)
+    }
+  }
+
+  const navigateBackToLevel = async (targetBreadcrumb: {guid: string, name: string, level: number}) => {
+    try {
+      // Remove breadcrumbs after target level
+      const targetIndex = hierarchyBreadcrumbs.findIndex(b => b.guid === targetBreadcrumb.guid)
+      const newBreadcrumbs = hierarchyBreadcrumbs.slice(0, targetIndex)
+      setHierarchyBreadcrumbs(newBreadcrumbs)
+      
+      if (newBreadcrumbs.length === 0) {
+        // Back to O_DD1 level
+        initializeHierarchyLevel()
+      } else {
+        // Back to specific parent level
+        const parentBreadcrumb = newBreadcrumbs[newBreadcrumbs.length - 1]
+        await drillDownToLevel(parentBreadcrumb, targetBreadcrumb.level)
+      }
+    } catch (error) {
+      console.error('Error navigating back:', error)
+    }
+  }
+
+  // Store all volume O_DD data for efficient searching
+  const [volumeO_DDCache, setVolumeO_DDCache] = useState<Map<string, {[key: number]: string | null}>>(new Map())
+
+  // Store all volume GUIDs from the loaded model
+  const [allVolumeGuids, setAllVolumeGuids] = useState<Set<string>>(new Set())
+
+  const handleAllVolumesLoad = (all_guids: string[]) => {
+    // Called by MotherGLBViewer with ALL volume GUIDs from the loaded model
+    console.log('📦 All volumes loaded:', all_guids.length, 'total volumes')
+    setAllVolumeGuids(new Set(all_guids))
+  }
+
+  const handleVolumeLoad = (o_dd1_guids: string[]) => {
+    // Called by MotherGLBViewer when PURE O_DD1 level items are identified
+    console.log('🎯 PURE O_DD1 items loaded:', o_dd1_guids.length, 'pure O_DD1 volumes')
+    const guidSet = new Set(o_dd1_guids)
+    setVisibleGuids(guidSet)
+    setSelectableGuids(guidSet)
+  }
+
   const handleVolumeSelect = async (volumeData: any, hierarchyInfo?: any) => {
     setSelectedVolume(volumeData)
     
     // Update hierarchy data if provided
     if (hierarchyInfo) {
       setHierarchyData(hierarchyInfo)
+    }
+    
+    // Check if this selection should trigger drill-down
+    if (volumeData?.guid && selectableGuids.has(volumeData.guid)) {
+      // Only drill down if we're not at the deepest level (O_DD4)
+      if (currentHierarchyLevel < 4) {
+        await drillDownToLevel(volumeData, currentHierarchyLevel + 1)
+      }
     }
     
     if (volumeData?.guid) {
@@ -383,8 +597,10 @@ export default function MotherViewerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header with Navigation */}
+    <>
+      <MenuBar />
+      <div className="min-h-screen bg-gray-900 text-white">
+      {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700 p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -394,40 +610,43 @@ export default function MotherViewerPage() {
             </p>
           </div>
           
-          <div className="flex gap-3">
-            <Link 
-              href="/"
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+          {/* Hierarchy Navigation Breadcrumbs */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-400">Level:</span>
+            <button
+              onClick={() => initializeHierarchyLevel()}
+              className={`px-3 py-1 rounded text-sm transition-colors ${
+                currentHierarchyLevel === 1 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+              }`}
             >
-              ← Home
-            </Link>
-            <Link 
-              href="/assets"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Asset Library
-            </Link>
-            <Link 
-              href="/multi-viewer"
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Multi-GLB Viewer
-            </Link>
-            <Link 
-              href="/hierarchy"
-              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Asset Hierarchy
-            </Link>
-            <Link 
-              href="/data"
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Data Management
-            </Link>
+              O_DD1
+            </button>
+            
+            {hierarchyBreadcrumbs.map((breadcrumb, index) => (
+              <div key={breadcrumb.guid} className="flex items-center gap-2">
+                <span className="text-gray-500">→</span>
+                <button
+                  onClick={() => navigateBackToLevel(breadcrumb)}
+                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                    currentHierarchyLevel === breadcrumb.level + 1 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                  }`}
+                >
+                  O_DD{breadcrumb.level + 1}
+                </button>
+              </div>
+            ))}
+            
+            {currentHierarchyLevel > 1 && (
+              <div className="flex items-center gap-2 ml-4">
+                <span className="text-xs text-gray-500">({visibleGuids.size} items)</span>
+              </div>
+            )}
           </div>
         </div>
-
       </div>
 
       {/* Main Content */}
@@ -439,6 +658,12 @@ export default function MotherViewerPage() {
               <MotherGLBViewer 
                 modelUrl={motherFile}
                 onVolumeSelect={handleVolumeSelect}
+                onVolumeLoad={handleVolumeLoad}
+                onAllVolumesLoad={handleAllVolumesLoad}
+                visibleGuids={Array.from(visibleGuids)}
+                selectableGuids={Array.from(selectableGuids)}
+                hierarchyLevel={currentHierarchyLevel}
+                shouldZoomToVisible={visibleGuids.size > 0}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-gray-400">
@@ -620,6 +845,7 @@ export default function MotherViewerPage() {
       <div className="fixed bottom-4 right-4">
         <p className="text-xs text-gray-500">designed by Emre</p>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

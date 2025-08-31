@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
+import MenuBar from '../components/MenuBar'
 import MultiGLBViewer from '../components/MultiGLBViewer'
 
 interface AssetFile {
@@ -36,10 +37,36 @@ export default function MultiViewerPage() {
   const [selectedIndex, setSelectedIndex] = useState<number>(-1)
   const [selectedMetadata, setSelectedMetadata] = useState<RevitMetadata | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
+  
+  // Panel collapse states
+  const [isAssetListCollapsed, setIsAssetListCollapsed] = useState(false)
+  const [isParametersCollapsed, setIsParametersCollapsed] = useState(false)
+  const [isControlsCollapsed, setIsControlsCollapsed] = useState(false)
 
   useEffect(() => {
     fetchGLBAssets()
+    // Load panel collapse states from localStorage
+    const savedAssetListCollapsed = localStorage.getItem('multi-viewer-asset-list-collapsed')
+    const savedParametersCollapsed = localStorage.getItem('multi-viewer-parameters-collapsed') 
+    const savedControlsCollapsed = localStorage.getItem('multi-viewer-controls-collapsed')
+    
+    if (savedAssetListCollapsed) setIsAssetListCollapsed(savedAssetListCollapsed === 'true')
+    if (savedParametersCollapsed) setIsParametersCollapsed(savedParametersCollapsed === 'true')
+    if (savedControlsCollapsed) setIsControlsCollapsed(savedControlsCollapsed === 'true')
   }, [])
+
+  // Save panel collapse states to localStorage
+  useEffect(() => {
+    localStorage.setItem('multi-viewer-asset-list-collapsed', isAssetListCollapsed.toString())
+  }, [isAssetListCollapsed])
+
+  useEffect(() => {
+    localStorage.setItem('multi-viewer-parameters-collapsed', isParametersCollapsed.toString())
+  }, [isParametersCollapsed])
+
+  useEffect(() => {
+    localStorage.setItem('multi-viewer-controls-collapsed', isControlsCollapsed.toString())
+  }, [isControlsCollapsed])
 
   const fetchGLBAssets = async () => {
     try {
@@ -276,42 +303,16 @@ export default function MultiViewerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="max-w-full mx-auto p-6">
+    <>
+      <MenuBar />
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="max-w-full mx-auto p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Multi-GLB Viewer</h1>
-            <p className="text-gray-300">
-              View all {glbAssets.length} GLB models together in one 3D scene
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link 
-              href="/"
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              ← Home
-            </Link>
-            <Link 
-              href="/assets"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Asset Library
-            </Link>
-            <Link 
-              href="/hierarchy"
-              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Asset Hierarchy
-            </Link>
-            <Link 
-              href="/data"
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-            >
-              Data Management
-            </Link>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">Multi-GLB Viewer</h1>
+          <p className="text-gray-300">
+            View all {glbAssets.length} GLB models together in one 3D scene
+          </p>
         </div>
 
         {glbAssets.length === 0 ? (
@@ -321,48 +322,97 @@ export default function MultiViewerPage() {
             <p>Upload some GLB files from the main viewer to see them here.</p>
           </div>
         ) : (
-          <div className="flex gap-6">
-            {/* Left Panel - GLB List (25%) */}
-            <div className="w-1/4">
-              <div className="bg-gray-800 rounded-lg p-4">
-                <h3 className="text-lg font-semibold mb-4">Loaded Models ({glbAssets.length})</h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {glbAssets.map((asset, index) => {
-                    const guid = extractGuidFromPath(asset.publicPath)
-                    const isSelected = selectedIndex === index
-                    
-                    return (
-                      <div 
-                        key={asset.publicPath}
-                        id={`asset-${index}`}
-                        className={`p-3 rounded text-sm cursor-pointer transition-colors ${
-                          isSelected 
-                            ? 'bg-orange-600 border border-orange-400 hover:bg-orange-700' 
-                            : 'bg-gray-700 hover:bg-gray-600'
-                        }`}
-                        onClick={() => handleListItemClick(asset)}
-                        onDoubleClick={(event) => handleListItemDoubleClick(asset, event)}
-                      >
-                        <div className="font-medium text-white truncate" title={asset.name}>
-                          {asset.name}
-                        </div>
-                        <div className="text-xs text-gray-400 mt-1">
-                          {formatFileSize(asset.size)}
-                        </div>
-                        {isSelected && (
-                          <div className="text-xs text-orange-200 mt-1">
-                            Selected
+          <div className="relative w-full" style={{ height: 'calc(100vh - 200px)' }}>
+            {/* Full-Screen 3D Viewer Background */}
+            <div className="absolute inset-0 bg-gray-800 rounded-lg overflow-hidden">
+              <MultiGLBViewer 
+                modelUrls={modelUrls}
+                onModelsLoad={handleModelsLoad}
+                onModelSelect={handleModelSelect}
+                selectedGuid={selectedGuid}
+                zoomTrigger={zoomTrigger}
+              />
+            </div>
+
+            {/* Left Overlay Panel - Asset List */}
+            <div className="absolute top-4 left-4 w-80 z-10">
+              <div className="bg-gray-800 rounded-lg shadow-lg border border-gray-700 overflow-hidden transition-all duration-300">
+                {/* Collapsible Header */}
+                <div className="p-4 border-b border-gray-700 flex items-center justify-between cursor-pointer" onClick={() => setIsAssetListCollapsed(!isAssetListCollapsed)}>
+                  <h3 className="text-lg font-semibold">Loaded Models ({glbAssets.length})</h3>
+                  <button className="text-gray-400 hover:text-white transition-colors">
+                    <svg 
+                      className={`w-5 h-5 transform transition-transform duration-200 ${isAssetListCollapsed ? 'rotate-180' : ''}`} 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+                
+                {/* Collapsible Content */}
+                <div className={`transition-all duration-300 ease-in-out ${isAssetListCollapsed ? 'max-h-0 opacity-0' : 'max-h-96 opacity-100'}`}>
+                  <div className="p-4">
+                    <div className="space-y-2 max-h-80 overflow-y-auto">
+                      {glbAssets.map((asset, index) => {
+                        const guid = extractGuidFromPath(asset.publicPath)
+                        const isSelected = selectedIndex === index
+                        
+                        return (
+                          <div 
+                            key={asset.publicPath}
+                            id={`asset-${index}`}
+                            className={`p-3 rounded text-sm cursor-pointer transition-colors ${
+                              isSelected 
+                                ? 'bg-orange-600 border border-orange-400 hover:bg-orange-700' 
+                                : 'bg-gray-700 hover:bg-gray-600'
+                            }`}
+                            onClick={() => handleListItemClick(asset)}
+                            onDoubleClick={(event) => handleListItemDoubleClick(asset, event)}
+                          >
+                            <div className="font-medium text-white truncate" title={asset.name}>
+                              {asset.name}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              {formatFileSize(asset.size)}
+                            </div>
+                            {isSelected && (
+                              <div className="text-xs text-orange-200 mt-1">
+                                Selected
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              {/* Revit Parameters Panel */}
-              <div className="mt-4 p-4 bg-gray-800 rounded-lg">
-                <h4 className="text-sm font-semibold mb-3 text-gray-300">Revit Parameters</h4>
+            {/* Bottom Left Overlay Panel - Revit Parameters */}
+            <div className="absolute bottom-4 left-4 w-80 z-10">
+              <div className="bg-gray-800 rounded-lg shadow-lg border border-gray-700 overflow-hidden transition-all duration-300">
+                {/* Collapsible Header */}
+                <div className="p-4 border-b border-gray-700 flex items-center justify-between cursor-pointer" onClick={() => setIsParametersCollapsed(!isParametersCollapsed)}>
+                  <h4 className="text-sm font-semibold text-gray-300">Revit Parameters</h4>
+                  <button className="text-gray-400 hover:text-white transition-colors">
+                    <svg 
+                      className={`w-4 h-4 transform transition-transform duration-200 ${isParametersCollapsed ? 'rotate-180' : ''}`} 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+                
+                {/* Collapsible Content */}
+                <div className={`transition-all duration-300 ease-in-out ${isParametersCollapsed ? 'max-h-0 opacity-0' : 'max-h-80 opacity-100'}`}>
+                  <div className="p-4">
                 {(() => {
                   console.log('🖼️ DEBUG: Rendering parameters panel')
                   console.log('🖼️ DEBUG: metadataLoading:', metadataLoading)
@@ -388,7 +438,7 @@ export default function MultiViewerPage() {
 
                     {/* Parameters */}
                     {selectedMetadata.metadata && selectedMetadata.metadata.length > 0 && (
-                      <div className="bg-gray-700 p-3 rounded max-h-64 overflow-y-auto">
+                      <div className="bg-gray-700 p-3 rounded max-h-48 overflow-y-auto">
                         <div className="text-xs font-medium text-blue-400 mb-2">
                           Parameters ({selectedMetadata.metadata.length})
                         </div>
@@ -411,35 +461,45 @@ export default function MultiViewerPage() {
                     <p className="text-xs">Select an asset to view its parameters</p>
                   </div>
                 )}
-              </div>
-
-              {/* Instructions */}
-              <div className="mt-4 p-4 bg-gray-800 rounded-lg">
-                <h4 className="text-sm font-semibold mb-2 text-gray-300">Controls:</h4>
-                <ul className="text-xs text-gray-400 space-y-1">
-                  <li>• Left-click + drag: Rotate camera</li>
-                  <li>• Right-click + drag: Pan camera</li>
-                  <li>• Scroll wheel: Zoom in/out</li>
-                  <li>• Click list item: Select & highlight model</li>
-                  <li>• Double-click list/3D model: Zoom to model</li>
-                  <li>• ↑/↓ arrows: Navigate list selection</li>
-                  <li>• Enter key: Zoom to selected model</li>
-                  <li>• F key: Zoom to fit all models</li>
-                  <li>• WASD + QE: Fly camera</li>
-                </ul>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Right Panel - 3D Viewer (75%) */}
-            <div className="w-3/4">
-              <div className="bg-gray-800 rounded-lg overflow-hidden" style={{ height: 'calc(100vh - 200px)' }}>
-                <MultiGLBViewer 
-                  modelUrls={modelUrls}
-                  onModelsLoad={handleModelsLoad}
-                  onModelSelect={handleModelSelect}
-                  selectedGuid={selectedGuid}
-                  zoomTrigger={zoomTrigger}
-                />
+            {/* Top Right Overlay Panel - Controls */}
+            <div className="absolute top-4 right-4 w-72 z-10">
+              <div className="bg-gray-800 rounded-lg shadow-lg border border-gray-700 overflow-hidden transition-all duration-300">
+                {/* Collapsible Header */}
+                <div className="p-4 border-b border-gray-700 flex items-center justify-between cursor-pointer" onClick={() => setIsControlsCollapsed(!isControlsCollapsed)}>
+                  <h4 className="text-sm font-semibold text-gray-300">Controls</h4>
+                  <button className="text-gray-400 hover:text-white transition-colors">
+                    <svg 
+                      className={`w-4 h-4 transform transition-transform duration-200 ${isControlsCollapsed ? 'rotate-180' : ''}`} 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+                
+                {/* Collapsible Content */}
+                <div className={`transition-all duration-300 ease-in-out ${isControlsCollapsed ? 'max-h-0 opacity-0' : 'max-h-64 opacity-100'}`}>
+                  <div className="p-4">
+                    <ul className="text-xs text-gray-400 space-y-1">
+                      <li>• Left-click + drag: Rotate camera</li>
+                      <li>• Right-click + drag: Pan camera</li>
+                      <li>• Scroll wheel: Zoom in/out</li>
+                      <li>• Click list item: Select & highlight model</li>
+                      <li>• Double-click list/3D model: Zoom to model</li>
+                      <li>• ↑/↓ arrows: Navigate list selection</li>
+                      <li>• Enter key: Zoom to selected model</li>
+                      <li>• F key: Zoom to fit all models</li>
+                      <li>• WASD + QE: Fly camera</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -450,6 +510,7 @@ export default function MultiViewerPage() {
       <div className="fixed bottom-4 right-4">
         <p className="text-xs text-gray-500">designed by Emre</p>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

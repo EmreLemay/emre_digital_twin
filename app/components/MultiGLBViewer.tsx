@@ -197,6 +197,21 @@ export default function MultiGLBViewer({ modelUrls, onModelsLoad, onModelSelect,
       directionalLight.shadow.camera.top = 20
       directionalLight.shadow.camera.bottom = -20
       scene.add(directionalLight)
+
+      // Top-left sunlight for dramatic lighting
+      const sunlight = new THREE.DirectionalLight(0xfffacd, 3.0) // Warm sunlight color with high intensity
+      sunlight.position.set(-15, 25, 15) // Top-left position
+      sunlight.castShadow = true
+      sunlight.shadow.mapSize.width = 2048
+      sunlight.shadow.mapSize.height = 2048
+      sunlight.shadow.camera.near = 0.1
+      sunlight.shadow.camera.far = 150
+      sunlight.shadow.camera.left = -30
+      sunlight.shadow.camera.right = 30
+      sunlight.shadow.camera.top = 30
+      sunlight.shadow.camera.bottom = -30
+      sunlight.shadow.bias = -0.0001
+      scene.add(sunlight)
       
       // 6. Load all GLB models with cancellation check
       console.log('TEST: About to check modelUrls.length:', modelUrls.length)
@@ -482,12 +497,16 @@ export default function MultiGLBViewer({ modelUrls, onModelsLoad, onModelSelect,
     const fov = camera.fov * (Math.PI / 180)
     const distance = (maxDim / 2) / Math.tan(fov / 2) * 2.5 // Closer zoom than fit-all
     
-    // Position camera at a good angle relative to the model
-    camera.position.set(
-      center.x + distance * 0.8,
-      center.y + distance * 0.6,
-      center.z + distance * 0.8
-    )
+    // Maintain current viewing angle but move closer to the model
+    const currentDirection = new THREE.Vector3()
+    camera.getWorldDirection(currentDirection)
+    currentDirection.negate() // Reverse to get direction from target to camera
+    
+    // Calculate new camera position maintaining the current viewing angle
+    const newCameraPosition = center.clone().add(currentDirection.multiplyScalar(distance))
+    
+    // Smooth transition to new position while maintaining rotation
+    camera.position.copy(newCameraPosition)
     camera.lookAt(center)
     
     // Update orbit center for controls

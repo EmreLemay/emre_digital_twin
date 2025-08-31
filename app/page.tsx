@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import MenuBar from './components/MenuBar'
 import ThreeViewer from './components/ThreeViewer'
 import PanoramaViewer from './components/PanoramaViewer'
 import ExcelUploader from './components/ExcelUploader'
@@ -63,10 +64,10 @@ export default function Home() {
       return
     }
     
-    // Check file size (allow up to 100MB)
-    const maxSize = 100 * 1024 * 1024 // 100MB in bytes
+    // Check file size (allow up to 500MB)
+    const maxSize = 500 * 1024 * 1024 // 500MB in bytes
     if (file.size > maxSize) {
-      alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is 100MB.`)
+      alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is 500MB.`)
       return
     }
     
@@ -126,49 +127,17 @@ export default function Home() {
   }, [])
   
   return (
-    <main className="min-h-screen bg-gray-900 text-white p-8">
+    <>
+      <MenuBar />
+      <main className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">
-              Connex Next.js Digital Twin Platform v0.4
-            </h1>
-            <p className="text-gray-300">
-              Managing 3D assets with GUIDs, metadata, and real-time streaming
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link 
-              href="/assets"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
-            >
-              Asset Library →
-            </Link>
-            <Link 
-              href="/multi-viewer"
-              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
-            >
-              Multi-GLB Viewer →
-            </Link>
-            <Link 
-              href="/hierarchy"
-              className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
-            >
-              Asset Hierarchy →
-            </Link>
-            <Link 
-              href="/data"
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
-            >
-              Data Management →
-            </Link>
-            <Link 
-              href="/mother-viewer"
-              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
-            >
-              Mother GLB Viewer →
-            </Link>
-          </div>
+        <div className="mb-4">
+          <h1 className="text-4xl font-bold mb-2">
+            Connex Next.js Digital Twin Platform v0.4
+          </h1>
+          <p className="text-gray-300">
+            Managing 3D assets with GUIDs, metadata, and real-time streaming
+          </p>
         </div>
         
         {/* Upload Section */}
@@ -369,6 +338,7 @@ export default function Home() {
       <div className="fixed bottom-4 right-4">
         <p className="text-xs text-gray-500">designed by Emre</p>
       </div>
-    </main>
+      </main>
+    </>
   )
 }
