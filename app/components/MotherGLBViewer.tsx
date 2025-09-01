@@ -50,6 +50,7 @@ export default function MotherGLBViewer({
   const orangeHighlightMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null)
   const dimmedMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null)
   const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map())
+  const allMeshesRef = useRef<THREE.Mesh[]>([])
   
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -322,7 +323,10 @@ export default function MotherGLBViewer({
                 guid: guid,
                 name: clickedObject.name || guid,
                 mesh: clickedObject,
-                boundingBox: new THREE.Box3().setFromObject(clickedObject)
+                boundingBox: new THREE.Box3().setFromObject(clickedObject),
+                children: [],
+                level: 0,
+                visible: true
               }
               selectVolume(clickedObject)
               onVolumeSelect(volumeData)
@@ -581,8 +585,19 @@ export default function MotherGLBViewer({
 
   // Load GLB model
   useEffect(() => {
-    if (!modelUrl || !sceneRef.current) return
+    console.log('📦 DEBUG: ========== LOADING GLB MODEL ==========');
+    console.log('📦 DEBUG: modelUrl:', modelUrl);
+    console.log('📦 DEBUG: sceneRef.current available:', !!sceneRef.current);
+    console.log('📦 DEBUG: hierarchyLevel:', hierarchyLevel);
+    console.log('📦 DEBUG: visibleGuids:', visibleGuids);
+    console.log('📦 DEBUG: selectableGuids:', selectableGuids);
+    
+    if (!modelUrl || !sceneRef.current) {
+      console.log('❌ DEBUG: No modelUrl or sceneRef, returning');
+      return
+    }
 
+    console.log('🚀 DEBUG: Starting GLB load process');
     setLoading(true)
     setError(null)
     
@@ -604,6 +619,7 @@ export default function MotherGLBViewer({
         console.log('Mother GLB loaded:', gltf)
         
         const volumes: VolumeData[] = []
+        allMeshesRef.current = [] // Reset all meshes tracking
         
         // Traverse the scene to find all meshes
         console.log('🔍 Starting to traverse GLB scene...')
@@ -613,6 +629,7 @@ export default function MotherGLBViewer({
           
           if (child.type === 'Mesh') {
             const mesh = child as THREE.Mesh
+            allMeshesRef.current.push(mesh) // Track ALL meshes, not just volumes
             const meshName = mesh.name || 'unnamed'
             
             console.log('🎯 MESH FOUND:', meshName, 'type:', typeof meshName)
@@ -691,7 +708,7 @@ export default function MotherGLBViewer({
                 name: meshName,
                 mesh: mesh,
                 boundingBox: boundingBox,
-                parentGuid: parentGuid,
+                parentGuid: parentGuid || undefined,
                 children: [],
                 level: 0, // Will be calculated after building hierarchy
                 visible: true // Will be updated after hierarchy processing
@@ -717,25 +734,35 @@ export default function MotherGLBViewer({
         console.log('- Max depth:', hierarchyData.hierarchyInfo.maxDepth)
         
         // Send hierarchy info to parent component
+        console.log('📦 DEBUG: Sending hierarchy info to parent');
         onVolumeSelect(null, hierarchyData.hierarchyInfo)
         
         // Send all volume GUIDs to parent for comprehensive searching
         if (onAllVolumesLoad) {
           const allGuids = hierarchyData.allVolumes.map(v => v.guid)
+          console.log(`📦 DEBUG: Calling onAllVolumesLoad with ${allGuids.length} GUIDs`);
+          console.log(`📦 DEBUG: First 5 GUIDs:`, allGuids.slice(0, 5));
           onAllVolumesLoad(allGuids)
-          console.log(`📦 Sent ${allGuids.length} volume GUIDs to parent for O_DD analysis`)
+          console.log(`📦 DEBUG: Sent ${allGuids.length} volume GUIDs to parent for O_DD analysis`)
+        } else {
+          console.log('⚠️ DEBUG: onAllVolumesLoad callback not provided');
         }
         
         // Identify PURE O_DD1 level items and notify parent (async)
+        console.log('🎯 DEBUG: Starting O_DD1 identification for', hierarchyData.allVolumes.length, 'volumes');
         identifyO_DD1Items(hierarchyData.allVolumes).then(o_dd1_items => {
-          console.log('🎯 Identified PURE O_DD1 items:', o_dd1_items.length)
+          console.log('🎯 DEBUG: Identified PURE O_DD1 items:', o_dd1_items.length)
           if (onVolumeLoad) {
+            console.log('🎯 DEBUG: Calling onVolumeLoad with O_DD1 items:', o_dd1_items.slice(0, 5));
             onVolumeLoad(o_dd1_items)
+          } else {
+            console.log('⚠️ DEBUG: onVolumeLoad callback not provided');
           }
         }).catch(error => {
-          console.error('Error identifying O_DD1 items:', error)
+          console.error('❌ DEBUG: Error identifying O_DD1 items:', error)
           // Fallback: if O_DD1 identification fails, show nothing (start clean)
           if (onVolumeLoad) {
+            console.log('⚠️ DEBUG: Fallback - calling onVolumeLoad with empty array');
             onVolumeLoad([])
           }
         })
@@ -838,54 +865,34 @@ export default function MotherGLBViewer({
     return pure_o_dd1_volumes
   }
 
-  // Handle visibility and selectability filtering based on hierarchy level
+  // SIMPLIFIED: Handle visibility - start invisible, show only selected
   useEffect(() => {
     if (volumesRef.current.length === 0) return
 
-    console.log('🔍 Updating volume visibility/selectability')
+    console.log('🔍 NEW APPROACH: Updating visibility')
     console.log('Visible GUIDs:', visibleGuids)
-    console.log('Selectable GUIDs:', selectableGuids)
-
+    console.log('📊 Total volumes:', volumesRef.current.length, 'Total meshes:', allMeshesRef.current.length)
+    
+    // STEP 1: Hide ALL meshes first
+    allMeshesRef.current.forEach(mesh => {
+      mesh.visible = false
+    })
+    
+    // STEP 2: Show only selected volumes
+    let visibleCount = 0
     volumesRef.current.forEach(volume => {
-      // If no visibleGuids specified, default to showing nothing (start clean)
-      const isVisible = visibleGuids.length > 0 && visibleGuids.includes(volume.guid)
-      const isSelectable = selectableGuids.length > 0 && selectableGuids.includes(volume.guid)
-
-      // Update visibility
-      volume.mesh.visible = isVisible
-      volume.visible = isVisible
-
-      // Update selectability (store in userData)
-      volume.mesh.userData.selectable = isSelectable
-
-      if (isVisible) {
-        if (isSelectable) {
-          // Restore original material for selectable items
-          const originalMaterial = originalMaterialsRef.current.get(volume.mesh)
-          if (originalMaterial) {
-            volume.mesh.material = originalMaterial
-          }
-        } else {
-          // Apply dimmed material to visible but non-selectable items
-          if (!dimmedMaterialRef.current) {
-            dimmedMaterialRef.current = new THREE.MeshBasicMaterial({
-              color: 0x666666,
-              transparent: true,
-              opacity: 0.4
-            })
-          }
-          
-          // Store original material if not already stored
-          if (!originalMaterialsRef.current.has(volume.mesh)) {
-            originalMaterialsRef.current.set(volume.mesh, volume.mesh.material)
-          }
-          
-          volume.mesh.material = dimmedMaterialRef.current
-        }
+      if (visibleGuids.includes(volume.guid)) {
+        console.log(`✅ SHOWING: ${volume.guid}`)
+        volume.mesh.visible = true
+        volume.visible = true
+        visibleCount++
+      } else {
+        volume.mesh.visible = false
+        volume.visible = false
       }
     })
-
-    console.log(`Updated visibility for ${volumesRef.current.length} volumes`)
+    
+    console.log(`📊 RESULT: ${visibleCount}/${volumesRef.current.length} volumes visible`)
   }, [visibleGuids, selectableGuids])
 
   // Trigger zoom to visible volumes when shouldZoomToVisible changes

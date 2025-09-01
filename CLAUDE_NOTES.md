@@ -170,12 +170,61 @@ All page-specific navigation buttons/links have been removed in favor of the uni
 
 ---
 
-## Future Enhancement Areas
-- Batch metadata API for improved O_DD analysis performance
-- More sophisticated parent-child relationship logic
-- Caching of O_DD classification data
-- Enhanced error handling and user feedback
+## DRILL-DOWN HIERARCHY IMPLEMENTATION (PAUSED FOR DEBUGGING)
+
+### Status: IMPLEMENTED BUT TEMPORARILY DISABLED
+The complete drill-down hierarchy system has been implemented but is currently disabled for basic visibility testing.
+
+#### Key Components Implemented:
+- **Master Building GUID**: `5ed5a9ae-bb0a-4af2-bf7c-25da60493dd0-003f9206` as permanent hierarchy root
+- **LCX_GUID_PARENT_01_GUID Navigation**: Uses actual Revit parent-child relationships
+- **6-Level Hierarchy**: Master (0) → Floor (1) → O_DD1 (2) → O_DD2 (3) → O_DD3 (4) → O_DD4 (5)
+- **Floor Detection**: Uses `VOLUME_CATEGORY = "FLOOR"` parameter
+- **Pure O_DD Classification**: Strict validation (O_DD1 filled, O_DD2/3/4 empty)
+- **Breadcrumb Navigation**: Full back-navigation with proper level names
+
+#### Functions Ready for Re-activation:
+```typescript
+// app/mother-viewer/page.tsx
+const findChildVolumes = async (parentGuid: string, filterOptions?) => { ... }
+const drillDownToLevel = async (selectedVolume: any, targetLevel: number) => { ... }
+const navigateBackToLevel = async (targetBreadcrumb) => { ... }
+const getLevelName = (level: number): string => { ... }
+```
+
+#### State Variables for Hierarchy:
+```typescript
+const [currentHierarchyLevel, setCurrentHierarchyLevel] = useState(0)
+const [hierarchyBreadcrumbs, setHierarchyBreadcrumbs] = useState([])
+const [visibleGuids, setVisibleGuids] = useState(new Set())
+const [selectableGuids, setSelectableGuids] = useState(new Set())
+```
+
+#### Comprehensive Debugging Added:
+- Full console debugging throughout all functions
+- GUID discovery and validation
+- Parent-child relationship logging
+- State change tracking
+- API call monitoring
+
+#### Issue Identified:
+Master building GUID hardcoded value may not match actual GLB contents. Fallback mechanism implemented to use first available GUID for testing.
+
+#### Next Steps for Re-activation:
+1. Verify correct Master building GUID from GLB contents
+2. Test basic visibility control first
+3. Re-enable drill-down navigation once visibility works
+4. Validate parent-child relationships with actual data
 
 ---
 
-*Last Updated: 2025-08-31 by Claude*
+## Future Enhancement Areas
+- Batch metadata API for improved O_DD analysis performance
+- More sophisticated parent-child relationship logic  
+- Caching of O_DD classification data
+- Enhanced error handling and user feedback
+- Re-integrate drill-down hierarchy after visibility testing
+
+---
+
+*Last Updated: 2025-09-01 by Claude*
