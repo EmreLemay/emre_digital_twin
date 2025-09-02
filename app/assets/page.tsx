@@ -5,6 +5,7 @@ import Link from 'next/link'
 import MenuBar from '../components/MenuBar'
 import ThreeViewer from '../components/ThreeViewer'
 import PanoramaViewer from '../components/PanoramaViewer'
+import { Checkbox, Tabs, IconButton, Input, Badge, Button, Alert, LoadingSpinner } from '../components/ui'
 
 interface AssetFile {
   name: string
@@ -51,6 +52,7 @@ export default function AssetsPage() {
   // Inline editing state
   const [editingName, setEditingName] = useState<string | null>(null)
   const [editingNameValue, setEditingNameValue] = useState('')
+  const [openActionMenu, setOpenActionMenu] = useState<string | null>(null)
   const [originalNameValue, setOriginalNameValue] = useState('')
   const [expandedRows, setExpandedRows] = useState<string[]>([])
   const [assetMetadata, setAssetMetadata] = useState<{[key: string]: AssetMetadata}>({})
@@ -99,9 +101,29 @@ export default function AssetsPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
+  // Define filter tabs
+  const filterTabs = [
+    { id: 'all', label: `All Assets (${assets.length})`, icon: '📁' },
+    { id: 'glb', label: `3D Models (${assets.filter(a => a.type === 'glb').length})`, icon: '🎲' },
+    { id: 'panorama', label: `Panoramas (${assets.filter(a => a.type === 'panorama').length})`, icon: '🖼️' }
+  ]
+
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString() + ' ' + new Date(dateString).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
   }
+
+  const toggleActionMenu = (assetPath: string) => {
+    setOpenActionMenu(openActionMenu === assetPath ? null : assetPath)
+  }
+
+  // Close action menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setOpenActionMenu(null)
+    if (openActionMenu) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [openActionMenu])
 
   const handleDeleteSingle = async (assetPath: string) => {
     if (!confirm('Are you sure you want to delete this file?')) return
@@ -478,7 +500,7 @@ export default function AssetsPage() {
     <>
       <MenuBar />
       <main className="min-h-screen bg-gray-900 text-white p-8">
-      <div className="max-w-7xl mx-auto">
+        <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Asset Database</h1>
@@ -486,38 +508,16 @@ export default function AssetsPage() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex justify-between items-end mb-6 border-b border-gray-600">
-          <div className="flex">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-6 py-3 font-medium transition-colors ${
-                filter === 'all' 
-                  ? 'border-b-2 border-green-500 text-green-500' 
-                  : 'text-gray-400 hover:text-white'
-              }`}
+        <div className="flex justify-between items-end mb-6">
+          <div className="flex-1">
+            <Tabs
+              tabs={filterTabs}
+              activeTab={filter}
+              onTabChange={(tabId: string) => setFilter(tabId as "all" | "glb" | "panorama")}
+              variant="green"
             >
-              All Assets ({assets.length})
-            </button>
-            <button
-              onClick={() => setFilter('glb')}
-              className={`px-6 py-3 font-medium transition-colors ${
-                filter === 'glb' 
-                  ? 'border-b-2 border-green-500 text-green-500' 
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              3D Models ({assets.filter(a => a.type === 'glb').length})
-            </button>
-            <button
-              onClick={() => setFilter('panorama')}
-              className={`px-6 py-3 font-medium transition-colors ${
-                filter === 'panorama' 
-                  ? 'border-b-2 border-green-500 text-green-500' 
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Panoramas ({assets.filter(a => a.type === 'panorama').length})
-            </button>
+              {/* Tab content is handled by the filteredAssets logic below */}
+            </Tabs>
           </div>
 
           {/* Bulk Actions */}
@@ -528,27 +528,30 @@ export default function AssetsPage() {
                   <span className="text-sm text-gray-400">
                     {selectedAssets.length} selected
                   </span>
-                  <button
+                  <Button
                     onClick={handleBulkDelete}
                     disabled={deleting.length > 0}
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                    variant="danger"
+                    size="sm"
                   >
                     Delete Selected
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={clearSelection}
-                    className="text-gray-400 hover:text-white px-2 py-2 rounded text-sm transition-colors"
+                    variant="ghost"
+                    size="sm"
                   >
                     Clear
-                  </button>
+                  </Button>
                 </>
               ) : (
-                <button
+                <Button
                   onClick={selectAll}
-                  className="text-gray-400 hover:text-white px-2 py-2 rounded text-sm transition-colors"
+                  variant="ghost"
+                  size="sm"
                 >
                   Select All
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -557,14 +560,15 @@ export default function AssetsPage() {
         {/* Content */}
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+            <LoadingSpinner size="lg" />
             <span className="ml-4 text-lg">Loading assets...</span>
           </div>
         ) : error ? (
-          <div className="bg-red-900/30 border border-red-600 text-red-300 p-6 rounded-lg">
-            <h3 className="font-medium mb-2">Error Loading Assets</h3>
-            <p>{error}</p>
-          </div>
+          <Alert
+            type="error"
+            title="Error Loading Assets"
+            message={error}
+          />
         ) : filteredAssets.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <div className="text-6xl mb-4">📁</div>
@@ -572,35 +576,35 @@ export default function AssetsPage() {
             <p>Upload some files from the main viewer to see them here.</p>
           </div>
         ) : (
-          /* Split View Layout - Asset List (60%) + GLB Preview (40%) */
+          /* Split View Layout - Asset List (75%) + GLB Preview (25%) */
           <div className="flex gap-6">
-            {/* Left Panel - Asset List (60%) */}
-            <div className="w-3/5">
+            {/* Left Panel - Asset List (75%) */}
+            <div className="w-3/4">
               {/* Database-style List View */}
               <div className="bg-gray-800 rounded-lg overflow-hidden">
-            {/* Table Header */}
-            <div className="grid grid-cols-12 gap-4 p-4 bg-gray-700 border-b border-gray-600 text-sm font-medium text-gray-300">
-              <div className="col-span-1 flex items-center">
-                <input
-                  type="checkbox"
-                  checked={selectedAssets.length === filteredAssets.length && filteredAssets.length > 0}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      selectAll()
-                    } else {
-                      clearSelection()
-                    }
-                  }}
-                  className="w-4 h-4 text-green-600 bg-gray-600 border-gray-500 rounded focus:ring-green-500"
-                />
-              </div>
-              <div className="col-span-1">Type</div>
-              <div className="col-span-3">Name</div>
-              <div className="col-span-1">Size</div>
-              <div className="col-span-2">Modified</div>
-              <div className="col-span-3">Description</div>
-              <div className="col-span-1">Actions</div>
-            </div>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[800px]">
+                    {/* Table Header */}
+                    <div className="grid gap-4 p-4 bg-gray-700 border-b border-gray-600 text-sm font-medium text-gray-300" style={{gridTemplateColumns: 'auto auto 1fr auto auto 1fr 50px'}}>
+                      <div className="flex items-center justify-center">
+                        <Checkbox
+                          checked={selectedAssets.length === filteredAssets.length && filteredAssets.length > 0}
+                          onChange={(checked) => {
+                            if (checked) {
+                              selectAll()
+                            } else {
+                              clearSelection()
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>Type</div>
+                      <div>Name</div>
+                      <div>Size</div>
+                      <div>Modified</div>
+                      <div>Description</div>
+                      <div>Actions</div>
+                    </div>
 
             {/* Table Rows */}
             {filteredAssets.map((asset, index) => {
@@ -614,28 +618,26 @@ export default function AssetsPage() {
                 <div key={index}>
                   {/* Main Row */}
                   <div 
-                    className={`grid grid-cols-12 gap-4 p-4 border-b border-gray-700 hover:bg-gray-750 transition-colors cursor-pointer ${
+                    className={`grid gap-4 p-4 border-b border-gray-700 hover:bg-gray-750 transition-colors cursor-pointer ${
                       isSelected ? 'bg-green-900/20' : ''
                     } ${isSelectedForPreview ? 'bg-blue-900/30 border-blue-600' : ''} ${isDeleting ? 'opacity-50' : ''}`}
+                    style={{gridTemplateColumns: 'auto auto 1fr auto auto 1fr 50px'}}
                     onClick={() => selectAssetForPreview(asset)}
                   >
                     
                     {/* Checkbox */}
-                    <div className="col-span-1 flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          e.stopPropagation()
-                          toggleAssetSelection(asset.publicPath)
-                        }}
-                        disabled={isDeleting}
-                        className="w-4 h-4 text-green-600 bg-gray-600 border-gray-500 rounded focus:ring-green-500"
-                      />
+                    <div className="flex items-center justify-center">
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={isSelected}
+                          onChange={() => toggleAssetSelection(asset.publicPath)}
+                          disabled={isDeleting}
+                        />
+                      </div>
                     </div>
 
                     {/* Type */}
-                    <div className="col-span-1 flex items-center">
+                    <div className="flex items-center">
                       <div className="relative">
                         <div className={`w-8 h-8 rounded flex items-center justify-center text-lg ${
                           asset.type === 'glb' ? 'bg-blue-600' : 'bg-green-600'
@@ -652,18 +654,18 @@ export default function AssetsPage() {
                     </div>
 
                     {/* Name */}
-                    <div className="col-span-3 flex items-center">
+                    <div className="flex items-center min-w-0">
                       {editingName === asset.publicPath ? (
-                        <input
-                          type="text"
-                          value={editingNameValue}
-                          onChange={(e) => setEditingNameValue(e.target.value)}
-                          onKeyDown={(e) => handleNameKeyPress(e, asset.publicPath)}
-                          onBlur={() => handleNameSave(asset.publicPath, true)}
-                          className="w-full bg-gray-700 text-white px-2 py-1 rounded text-sm font-medium"
-                          autoFocus
-                          placeholder="Enter new name..."
-                        />
+                        <div className="w-full">
+                          <Input
+                            value={editingNameValue}
+                            onChange={setEditingNameValue}
+                            onKeyDown={(e) => handleNameKeyPress(e, asset.publicPath)}
+                            onBlur={() => handleNameSave(asset.publicPath, true)}
+                            placeholder="Enter new name..."
+                            className="font-medium"
+                          />
+                        </div>
                       ) : (
                         <span 
                           className="font-medium text-white truncate cursor-pointer hover:text-green-400 transition-colors" 
@@ -679,75 +681,100 @@ export default function AssetsPage() {
                     </div>
 
                     {/* Size */}
-                    <div className="col-span-1 flex items-center text-gray-400 text-sm">
+                    <div className="flex items-center text-gray-400 text-sm whitespace-nowrap">
                       {formatFileSize(asset.size)}
                     </div>
 
                     {/* Modified */}
-                    <div className="col-span-2 flex items-center text-gray-400 text-sm">
+                    <div className="flex items-center text-gray-400 text-sm whitespace-nowrap">
                       {formatDate(asset.lastModified)}
                     </div>
 
                     {/* Description */}
-                    <div className="col-span-3 flex items-center">
-                      <input
-                        type="text"
+                    <div className="flex items-center min-w-0">
+                      <Input
                         value={editingDescriptions[asset.publicPath] || ''}
-                        onChange={(e) => setEditingDescriptions(prev => ({...prev, [asset.publicPath]: e.target.value}))}
+                        onChange={(value) => setEditingDescriptions(prev => ({...prev, [asset.publicPath]: value}))}
                         onBlur={() => saveMetadata(asset.publicPath)}
-                        className="w-full bg-gray-700 text-white px-2 py-1 rounded text-sm border border-gray-600 focus:border-blue-500 focus:outline-none"
+                        size="sm"
                         placeholder="Add description..."
                       />
                     </div>
 
                     {/* Actions */}
-                    <div className="col-span-1 flex items-center gap-1">
-                      <Link
-                        href={`/?file=${encodeURIComponent(asset.publicPath)}&type=${asset.type}`}
-                        className="bg-green-600 hover:bg-green-700 text-white p-1 rounded text-xs transition-colors"
-                        title="Open"
-                      >
-                        ▶
-                      </Link>
-                      <button
+                    <div className="flex items-center gap-1 justify-end">
+                      <IconButton
                         onClick={(e) => {
                           e.stopPropagation()
                           toggleRow(asset.publicPath)
                         }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white p-1 rounded text-xs transition-colors"
-                        title="Toggle metadata"
+                        variant="primary"
+                        size="xs"
+                        tooltip="Toggle metadata"
                       >
                         {isExpanded ? '▲' : '▼'}
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteSingle(asset.publicPath)
-                        }}
-                        disabled={isDeleting}
-                        className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 text-white p-1 rounded text-xs transition-colors"
-                        title="Delete"
-                      >
-                        {isDeleting ? '...' : '×'}
-                      </button>
+                      </IconButton>
+                      <div className="relative">
+                        <IconButton
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleActionMenu(asset.publicPath)
+                          }}
+                          variant="ghost"
+                          size="xs"
+                          tooltip="Actions"
+                        >
+                          ⋯
+                        </IconButton>
+                        {openActionMenu === asset.publicPath && (
+                          <div 
+                            className="absolute right-0 top-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 min-w-[120px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              onClick={() => {
+                                handleDeleteSingle(asset.publicPath)
+                                setOpenActionMenu(null)
+                              }}
+                              disabled={isDeleting}
+                              className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                              {isDeleting ? (
+                                <>
+                                  <div className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin"></div>
+                                  Deleting...
+                                </>
+                              ) : (
+                                <>
+                                  <span>×</span>
+                                  Delete
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {/* Expandable Metadata Row */}
                   {isExpanded && (
-                    <div className="bg-gray-750 border-b border-gray-700">
-                      <div className="p-4 ml-16">
-                        <div className="space-y-6">
+                    <div className="bg-gray-750 border-b border-gray-700 overflow-hidden">
+                      <div className="p-4 ml-4 sm:ml-8 lg:ml-16 max-w-[calc(100vw-2rem)]">
+                        <div className="space-y-6 max-w-full overflow-hidden">
                           {/* Asset BIM Data Section for GLB files and Panoramas */}
                           {(asset.type === 'glb' || asset.type === 'panorama') && (
-                            <div>
+                            <div className="max-w-full overflow-hidden">
                               <label className="block text-sm font-medium text-blue-400 mb-3 flex items-center">
                                 <span className="mr-2">{asset.type === 'glb' ? '🏗️' : '🏢'}</span>
                                 {asset.type === 'glb' ? 'Asset BIM Data' : 'Space Data'}
                                 {assetData[asset.publicPath]?.success && (
-                                  <span className="ml-2 text-xs bg-green-600 text-white px-2 py-0.5 rounded-full">
+                                  <Badge 
+                                    variant="success" 
+                                            className="ml-2"
+                                  >
                                     {assetData[asset.publicPath]?.asset?.metadata?.length || 0} parameters
-                                  </span>
+                                  </Badge>
                                 )}
                               </label>
                               
@@ -755,16 +782,18 @@ export default function AssetsPage() {
                                 assetData[asset.publicPath].success ? (
                                   <div className="space-y-4">
                                     {/* Asset Basic Info */}
-                                    <div className="bg-gray-800 p-3 rounded border border-gray-600">
-                                      <div className="grid grid-cols-2 gap-2 text-sm">
-                                        <div><span className="text-gray-400">Name:</span> <span className="text-white">{assetData[asset.publicPath].asset?.name || 'Unnamed Asset'}</span></div>
-                                        <div><span className="text-gray-400">Category:</span> <span className="text-white">{assetData[asset.publicPath].asset?.category || 'Unknown'}</span></div>
+                                    <div className="bg-gray-800 p-3 rounded border border-gray-600 max-w-full overflow-hidden">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                                        <div><span className="text-gray-400">Name:</span> <span className="text-white break-all">{assetData[asset.publicPath].asset?.name || 'Unnamed Asset'}</span></div>
+                                        <div><span className="text-gray-400">Category:</span> <span className="text-white break-words">{assetData[asset.publicPath].asset?.category || 'Unknown'}</span></div>
                                       </div>
                                       <div className="mt-2">
-                                        <span className="text-gray-400">GUID:</span> 
-                                        <span className="text-blue-300 font-mono text-xs ml-2 bg-gray-700 px-2 py-1 rounded">
-                                          {assetData[asset.publicPath].asset?.guid}
-                                        </span>
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                                          <span className="text-gray-400">GUID:</span> 
+                                          <span className="text-blue-300 font-mono text-xs bg-gray-700 px-2 py-1 rounded break-all">
+                                            {assetData[asset.publicPath].asset?.guid}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
                                     
@@ -776,21 +805,23 @@ export default function AssetsPage() {
                                           No parameters found for this asset
                                         </div>
                                       ) : (
-                                        <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto">
+                                        <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto overflow-x-hidden">
                                           {(assetData[asset.publicPath].asset?.metadata || []).map((param) => {
                                             const editKey = param.id.toString()
                                             const isEditing = editKey in editingParameters
                                             
                                             return (
-                                              <div key={param.id} className="bg-gray-800 p-3 rounded border border-gray-600">
-                                                <div className="flex items-start justify-between">
-                                                  <div className="flex-1">
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                      <span className="text-sm">{getParameterIcon(param.parameterType)}</span>
-                                                      <span className="text-sm font-medium text-white">
-                                                        {param.parameterName}
-                                                      </span>
-                                                      <span className="text-xs bg-gray-600 text-gray-200 px-2 py-1 rounded">
+                                              <div key={param.id} className="bg-gray-800 p-3 rounded border border-gray-600 max-w-full">
+                                                <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+                                                  <div className="flex-1 min-w-0 max-w-full">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm">{getParameterIcon(param.parameterType)}</span>
+                                                        <span className="text-sm font-medium text-white break-words max-w-full">
+                                                          {param.parameterName}
+                                                        </span>
+                                                      </div>
+                                                      <span className="text-xs bg-gray-600 text-gray-200 px-2 py-1 rounded whitespace-nowrap">
                                                         {param.parameterType.toLowerCase()}
                                                       </span>
                                                     </div>
@@ -802,12 +833,12 @@ export default function AssetsPage() {
                                                         onChange={(e) => setEditingParameters(prev => ({...prev, [editKey]: e.target.value}))}
                                                         onKeyDown={(e) => handleParameterKeyPress(e, asset.publicPath, param.id)}
                                                         onBlur={() => saveParameter(asset.publicPath, param.id)}
-                                                        className="w-full bg-gray-700 text-white px-2 py-1 rounded text-sm border border-gray-500 focus:border-blue-500 focus:outline-none"
+                                                        className="w-full max-w-full bg-gray-700 text-white px-2 py-1 rounded text-sm border border-gray-500 focus:border-blue-500 focus:outline-none break-all"
                                                         autoFocus
                                                       />
                                                     ) : (
                                                       <div 
-                                                        className="text-gray-200 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded transition-colors"
+                                                        className="text-gray-200 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded transition-colors break-words"
                                                         onClick={() => startParameterEdit(param.id, param.parameterValue)}
                                                         title="Click to edit"
                                                       >
@@ -912,11 +943,13 @@ export default function AssetsPage() {
                 </div>
               )
             })}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Right Panel - GLB Preview (40%) */}
-            <div className="w-2/5">
+            {/* Right Panel - GLB Preview (25%) */}
+            <div className="w-1/4">
               <div className="bg-gray-800 rounded-lg p-6 sticky top-8">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-semibold">Asset Preview</h3>
@@ -999,13 +1032,12 @@ export default function AssetsPage() {
             </div>
           </div>
         )}
-      </div>
-      
-      {/* Footer */}
-      <div className="fixed bottom-4 right-4">
-        <p className="text-xs text-gray-500">designed by Emre</p>
-      </div>
-    </main>
+          {/* Footer */}  
+          <div className="fixed bottom-4 right-4">
+            <p className="text-xs text-gray-500">designed by Emre</p>
+          </div>
+        </div>
+      </main>
     </>
   )
 }

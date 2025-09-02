@@ -9,10 +9,12 @@ const MenuBar = () => {
   const menuItems = [
     { name: 'Home', href: '/', icon: '🏠' },
     { name: 'Assets', href: '/assets', icon: '📦' },
+    { name: '3D Viewer 2.0', href: '/viewer-2', icon: '🚀' },
     { name: 'Multi Viewer', href: '/multi-viewer', icon: '🔍' },
     { name: 'Hierarchy', href: '/hierarchy', icon: '🌳' },
     { name: 'Data', href: '/data', icon: '📊' },
     { name: 'Mother Viewer', href: '/mother-viewer', icon: '👁️' },
+    { name: 'UI Demo', href: '/ui-demo', icon: '🎨' },
   ]
 
   return (

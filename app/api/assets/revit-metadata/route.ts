@@ -1,14 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// Extract GUID from filename (GLB or panorama)
+// Extract GUID from filename (GLB or panorama) using improved logic
 function extractGuidFromFilename(filename: string): string | null {
-  // GLB files: "46ad14df-85fd-41dc-b1b4-0a7baf1b5412-003cf5ca.glb"
-  // Panorama files: "a0edc2ea-5ecb-4332-992e-6785ae78c6c8-003daafc_360.jpg"
-  return filename
-    .replace(/\.(glb|GLB)$/, '')  // Remove .glb extension
-    .replace(/_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/, '')  // Remove _360.jpg suffix
-    .toLowerCase()
+  console.log('🔍 API: Extracting GUID from filename:', filename)
+  
+  // Handle GLB files
+  if (filename.toLowerCase().endsWith('.glb')) {
+    // First try to match the extended format: GUID-extension (e.g., 21a96bfe-1d2f-4913-a727-8c72a07cf272-003cf9e2)
+    let guidMatch = filename.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[0-9a-f]{8})\.glb$/i)
+    let guid = guidMatch ? guidMatch[1] : null
+    
+    // If not found, try standard GUID format (allowing any alphanumeric characters for flexibility)
+    if (!guid) {
+      guidMatch = filename.match(/([0-9a-zA-Z]{8}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{12})\.glb$/i)
+      guid = guidMatch ? guidMatch[1] : null
+    }
+    
+    // If still not found, try to extract just the filename without extension as GUID
+    if (!guid) {
+      const nameWithoutExt = filename.replace(/\.glb$/i, '')
+      if (nameWithoutExt.length > 0) {
+        guid = nameWithoutExt
+      }
+    }
+    
+    console.log('🔍 API: GLB GUID extraction result:', { filename, guid })
+    return guid?.toLowerCase() || null
+  }
+  
+  // Handle panorama files
+  if (/_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/.test(filename)) {
+    const guid = filename.replace(/_360\.(jpg|jpeg|png|JPG|JPEG|PNG)$/i, '')
+    console.log('🔍 API: Panorama GUID extraction result:', { filename, guid })
+    return guid.toLowerCase()
+  }
+  
+  console.log('🔍 API: No GUID pattern matched for:', filename)
+  return null
 }
 
 // Get Revit metadata for GLB or panorama files by extracting GUID from filename

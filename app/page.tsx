@@ -10,14 +10,20 @@ import ExcelUploader from './components/ExcelUploader'
 import RevitImporter from './components/RevitImporter'
 import BulkUploader from './components/BulkUploader'
 import AssetMetadataPanel from './components/AssetMetadataPanel'
+import { FileUpload, Tabs, Alert, ProgressBar } from './components/ui'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'3d' | 'panorama' | 'excel' | 'revit' | 'bulk'>('3d')
+  const [activeTab, setActiveTab] = useState<string>('3d')
   const [modelUrl, setModelUrl] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [modelInfo, setModelInfo] = useState<{name: string, size: string, type: string, vertices?: number, animations?: number, scenes?: number} | null>(null)
   const [imageInfo, setImageInfo] = useState<{name: string, size: string, type: string, width?: number, height?: number, format?: number} | null>(null)
   const [fileName, setFileName] = useState<string>('No file selected')
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [showUploadAlert, setShowUploadAlert] = useState(false)
+  const [uploadAlertMessage, setUploadAlertMessage] = useState('')
+  const [uploadAlertType, setUploadAlertType] = useState<'success' | 'error'>('success')
+  const [isUploading, setIsUploading] = useState(false)
   const searchParams = useSearchParams()
 
   // Load file from asset library if URL params are present
@@ -51,8 +57,8 @@ export default function Home() {
     }
   }, [searchParams])
   
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+  const handleFileSelect = async (files: File[]) => {
+    const file = files[0]
     if (!file) return
     
     const fileName = file.name.toLowerCase()
@@ -60,18 +66,31 @@ export default function Home() {
     const isImage = fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png') || fileName.endsWith('.webp')
     
     if (!isGLB && !isImage) {
-      alert('Please select a .glb file or an image file (.jpg, .png, .webp)')
+      setUploadAlertType('error')
+      setUploadAlertMessage('Please select a .glb file or an image file (.jpg, .png, .webp)')
+      setShowUploadAlert(true)
       return
     }
     
     // Check file size (allow up to 500MB)
     const maxSize = 500 * 1024 * 1024 // 500MB in bytes
     if (file.size > maxSize) {
-      alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is 500MB.`)
+      setUploadAlertType('error')
+      setUploadAlertMessage(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is 500MB.`)
+      setShowUploadAlert(true)
       return
     }
     
     try {
+      setIsUploading(true)
+      setUploadProgress(0)
+      setShowUploadAlert(false)
+      
+      // Simulate progress for better UX
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + Math.random() * 30, 90))
+      }, 200)
+      
       // Upload file to server
       const formData = new FormData()
       formData.append('file', file)
@@ -83,8 +102,13 @@ export default function Home() {
       
       const result = await response.json()
       
+      clearInterval(progressInterval)
+      setUploadProgress(100)
+      
       if (!result.success) {
-        alert(`Upload failed: ${result.error}`)
+        setUploadAlertType('error')
+        setUploadAlertMessage(`Upload failed: ${result.error}`)
+        setShowUploadAlert(true)
         return
       }
       
@@ -112,9 +136,19 @@ export default function Home() {
           type: file.type || 'image'
         })
       }
+      
+      setUploadAlertType('success')
+      setUploadAlertMessage(`File "${file.name}" uploaded successfully!`)
+      setShowUploadAlert(true)
+      
     } catch (error) {
       console.error('Upload error:', error)
-      alert('Failed to upload file. Please try again.')
+      setUploadAlertType('error')
+      setUploadAlertMessage('Failed to upload file. Please try again.')
+      setShowUploadAlert(true)
+    } finally {
+      setIsUploading(false)
+      setTimeout(() => setUploadProgress(0), 2000)
     }
   }
   
@@ -125,6 +159,15 @@ export default function Home() {
   const handleImageLoad = useCallback((info: {width: number, height: number, format: number}) => {
     setImageInfo((prev) => prev ? ({ ...prev, ...info }) : null)
   }, [])
+
+  // Define tabs for the viewer section
+  const viewerTabs = [
+    { id: '3d', label: '3D Models', icon: '🎲' },
+    { id: 'panorama', label: '360° Panoramas', icon: '🖼️' },
+    { id: 'excel', label: 'Excel Data', icon: '📊' },
+    { id: 'revit', label: 'Revit Import', icon: '🏗️' },
+    { id: 'bulk', label: 'Bulk Upload', icon: '📁' }
+  ]
   
   return (
     <>
@@ -141,108 +184,95 @@ export default function Home() {
         </div>
         
         {/* Upload Section */}
-        <div className="mb-6 bg-gray-800 rounded-lg p-4">
-          <label className="block">
-            <span className="text-sm text-gray-400 mb-2 block">Upload File:</span>
-            <input
-              type="file"
-              accept=".glb,.jpg,.jpeg,.png,.webp"
-              onChange={handleFileUpload}
-              className="block w-full text-sm text-gray-300
-                file:mr-4 file:py-2 file:px-4
-                file:rounded file:border-0
-                file:text-sm file:font-semibold
-                file:bg-green-600 file:text-white
-                hover:file:bg-green-700
-                file:cursor-pointer"
-            />
-          </label>
+        <div className="mb-6">
+          {showUploadAlert && (
+            <div className="mb-4">
+              <Alert
+                type={uploadAlertType}
+                message={uploadAlertMessage}
+                dismissible
+                onDismiss={() => setShowUploadAlert(false)}
+              />
+            </div>
+          )}
+          
+          <FileUpload
+            label="Upload File"
+            accept=".glb,.jpg,.jpeg,.png,.webp"
+            onFileSelect={handleFileSelect}
+            dragAndDrop={true}
+            multiple={false}
+            disabled={isUploading}
+            maxSize={500 * 1024 * 1024}
+            helperText="Supported formats: GLB, JPG, PNG, WEBP | Max size: 500MB"
+          />
+          
+          {isUploading && (
+            <div className="mt-4">
+              <ProgressBar
+                progress={uploadProgress}
+                label="Uploading file..."
+                animated={true}
+                showPercentage={true}
+              />
+            </div>
+          )}
+          
           <p className="text-xs text-gray-500 mt-2">
-            Currently viewing: {fileName} | Supported: .glb, .jpg, .png, .webp
+            Currently viewing: {fileName}
           </p>
         </div>
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Viewer Section with Tabs */}
-          <div className="bg-gray-800 rounded-lg p-6">
-            {/* Tab Headers */}
-            <div className="flex mb-4 border-b border-gray-600">
-              <button
-                onClick={() => setActiveTab('3d')}
-                className={`px-4 py-2 mr-2 rounded-t transition-colors ${
-                  activeTab === '3d' 
-                    ? 'bg-green-600 text-white border-b-2 border-green-400' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                3D Models
-              </button>
-              <button
-                onClick={() => setActiveTab('panorama')}
-                className={`px-4 py-2 mr-2 rounded-t transition-colors ${
-                  activeTab === 'panorama' 
-                    ? 'bg-green-600 text-white border-b-2 border-green-400' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                360° Panoramas
-              </button>
-              <button
-                onClick={() => setActiveTab('excel')}
-                className={`px-4 py-2 mr-2 rounded-t transition-colors ${
-                  activeTab === 'excel' 
-                    ? 'bg-green-600 text-white border-b-2 border-green-400' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Excel Data
-              </button>
-              <button
-                onClick={() => setActiveTab('revit')}
-                className={`px-4 py-2 mr-2 rounded-t transition-colors ${
-                  activeTab === 'revit' 
-                    ? 'bg-green-600 text-white border-b-2 border-green-400' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Revit Import
-              </button>
-              <button
-                onClick={() => setActiveTab('bulk')}
-                className={`px-4 py-2 rounded-t transition-colors ${
-                  activeTab === 'bulk' 
-                    ? 'bg-green-600 text-white border-b-2 border-green-400' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Bulk Upload
-              </button>
-            </div>
-            
-            {/* Tab Content */}
-            <div className={`${activeTab === 'excel' || activeTab === 'revit' || activeTab === 'bulk' ? 'h-auto' : 'h-96'}`}>
-              {activeTab === '3d' ? (
-                <ThreeViewer 
-                  modelUrl={modelUrl} 
-                  onModelLoad={handleModelLoad}
-                />
-              ) : activeTab === 'panorama' ? (
-                <PanoramaViewer 
-                  imageUrl={imageUrl} 
-                  onImageLoad={handleImageLoad}
-                />
-              ) : activeTab === 'excel' ? (
-                <ExcelUploader />
-              ) : activeTab === 'bulk' ? (
-                <BulkUploader />
-              ) : (
-                <RevitImporter />
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          {/* Viewer Section with Tabs - 60% width */}
+          <div className="lg:col-span-3 bg-gray-800 rounded-lg p-6">
+            <Tabs
+              tabs={viewerTabs}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              variant="green"
+              responsive={true}
+            >
+              {activeTab === '3d' && (
+                <div className="h-96">
+                  <ThreeViewer 
+                    modelUrl={modelUrl} 
+                    onModelLoad={handleModelLoad}
+                  />
+                </div>
               )}
-            </div>
+              
+              {activeTab === 'panorama' && (
+                <div className="h-96">
+                  <PanoramaViewer 
+                    imageUrl={imageUrl} 
+                    onImageLoad={handleImageLoad}
+                  />
+                </div>
+              )}
+              
+              {activeTab === 'excel' && (
+                <div className="h-auto">
+                  <ExcelUploader />
+                </div>
+              )}
+              
+              {activeTab === 'revit' && (
+                <div className="h-auto">
+                  <RevitImporter />
+                </div>
+              )}
+              
+              {activeTab === 'bulk' && (
+                <div className="h-auto">
+                  <BulkUploader />
+                </div>
+              )}
+            </Tabs>
           </div>
           
-          {/* Asset Metadata Panel (shows asset data for 3D models and panoramas) */}
-          <div className="h-full">
+          {/* Asset Metadata Panel (shows asset data for 3D models and panoramas) - 40% width */}
+          <div className="lg:col-span-2 h-full">
             {activeTab === '3d' ? (
               <AssetMetadataPanel 
                 glbFileName={modelInfo?.name || null}
